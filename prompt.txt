@@ -1,0 +1,4 @@
+You have been assigned the task of zero-shot text classification for posts on Stack Overflow. Your objective is to classify a given text snippet into one of several possible class labels, based on the category of deep learning bugs discussed in the text snippet. Your output should consist of a single class label that best matches the bug category discussed in the text. If the text does not describe a deep learning bug, output "Others". Choose ONLY from the given class labels below and ONLY output the label without any other characters.
+Text: <Text>
+Labels: Model, Tensors&Inputs, Training, GPU Usage, API, Others
+Answer:
