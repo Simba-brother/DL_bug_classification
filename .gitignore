@@ -1,0 +1,30 @@
+
+n
+__pycache__/
+*.pyc
+
+# Conda
+.env
+.venv/
+
+# VSCode
+.vscode/
+
+# macOS
+.DS_Store
+__MACOSX/
+._*
+
+# 日志
+*.log
+
+# 压缩文件
+*.zip
+
+# 模型
+*.pth
+*.pt
+
+# 数据集
+data/
+Replication_Package/
