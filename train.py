@@ -65,24 +65,35 @@ def evaluate(model, val_loader, device):
     return accuracy, np.mean(losses), f1
 
 def train(rs=42, device='cuda:0'):
-    model_name = "/home/xwj/exp33/model/"
+    # 语言模型目录
+    model_path= "./model"
     s_time=time.time()
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=5)
-    df = pd.read_csv("/data2/xwj/dataset.csv")
+    # tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+    # 预训练分类模型
+    model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=5) # 应该是6(5个DL bug,1个no DL bug)
+    # 数据集
+    df = pd.read_csv("./dataset.csv")
 
+    # 划分出75个测试集，剩下的都是训练集
     X_train, X_test, y_train, y_test = train_test_split(list(df['Text']), list(df['LabelNum']), test_size=75, stratify=df['LabelNum'], random_state=int(rs))
+    # 训练集中再划分出val
     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=75, stratify=y_train, random_state=int(rs))
 
     # print(Counter(df['LabelNum']), len(df))
     # print(len(X_train), len(X_val), len(X_test))
 
+    # 训练集加载器
     train_loader = DataLoader(TextDataset(X_train, y_train, tokenizer),batch_size=32, shuffle=True)
+    # 验证集加载器
     val_loader = DataLoader(TextDataset(X_val, y_val, tokenizer), batch_size=32)
+    # 测试集加载器
     test_loader = DataLoader(TextDataset(X_test, y_test, tokenizer), batch_size=32)
 
+    # 模型参数优化器
     optimizer = AdamW(model.parameters(), lr=4e-6)
 
+    # 模型放到gpu上
     model.to(device)
     scaler = torch.cuda.amp.GradScaler()
 

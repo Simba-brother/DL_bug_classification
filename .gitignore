@@ -27,4 +27,5 @@ __MACOSX/
 
 # 数据集
 data/
+model/
 Replication_Package/
