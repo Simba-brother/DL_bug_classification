@@ -18,14 +18,15 @@ class TextDataset(Dataset):
         self.texts = texts
         self.labels = labels
         self.tokenizer = tokenizer
-        self.max_length = max_length
+        self.max_length = max_length # Maximum length of each sentence(text)
 
     def __len__(self):
-        return len(self.texts)
+        return len(self.texts) # Number of sentences(text) in the dataset.
 
     def __getitem__(self, idx):
-        text = self.texts[idx]
-        label = self.labels[idx]
+        text = self.texts[idx] # Obtain the text based on the idx.
+        label = self.labels[idx] # Obtain the label based on the idx.
+        # Tokenize the text.
         inputs = self.tokenizer(
             str(text),
             max_length=self.max_length,
@@ -33,10 +34,17 @@ class TextDataset(Dataset):
             truncation=True,
             return_tensors='pt'
         )
+
+        '''
+        随后，DataLoader 会把多条样本组合成一个批次。假设 batch_size=32，结果大致为：
+        batch['input_ids'].shape       # [32, 512]
+        batch['attention_mask'].shape  # [32, 512]
+        batch['labels'].shape          # [32]
+        '''
         return {
-            'input_ids': inputs['input_ids'].squeeze(),
-            'attention_mask': inputs['attention_mask'].squeeze(),
-            'labels': torch.tensor(label)
+            'input_ids': inputs['input_ids'].squeeze(), # tensor([[101, 2769, 4638, 102, 0]])，每个token在词表中的编号.这里的 .squeeze() 用来去掉 tokenizer 添加的大小为1的批次维度：
+            'attention_mask': inputs['attention_mask'].squeeze(), # 1 表示真实 token，0 表示补齐的 padding。
+            'labels': torch.tensor(label) # 类别标签
         }
 
 def evaluate(model, val_loader, device):
@@ -95,12 +103,12 @@ def train(rs=42, device='cuda:0'):
 
     # 模型放到gpu上
     model.to(device)
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.cuda.amp.GradScaler() # AMP,加速训练
 
-    num_epochs = 30
+    num_epochs = 30 
     best_loss = float('inf')
     for epoch in range(num_epochs):
-        model.train()
+        model.train() # The model enters training mode.
         i=0
         losses = []
         for batch in train_loader:
@@ -115,23 +123,27 @@ def train(rs=42, device='cuda:0'):
             
             with torch.cuda.amp.autocast():
                 outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
-                loss = outputs.loss
+                loss = outputs.loss # batch loss
             losses.append(loss.item())
             # loss.backward()
             # optimizer.step()
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
-        
-        res = evaluate(model, train_loader, device)
-        val_res = evaluate(model, val_loader, device)
-        test_res = evaluate(model, test_loader, device)
+        '''
+          val_res[0]  # 验证集准确率 accuracy
+          val_res[1]  # 验证集平均损失 loss
+          val_res[2]  # 验证集宏平均 F1
+        '''
+        res = evaluate(model, train_loader, device) # trainset eval res
+        val_res = evaluate(model, val_loader, device) # valset eval res
+        test_res = evaluate(model, test_loader, device) # testset eval res
 
         # 保存val_loss最小的模型
         if val_res[1] < best_loss:
             best_loss = val_res[1]
-            model.save_pretrained(f"ft_model_{rs}")
-            tokenizer.save_pretrained(f"ft_model_{rs}")
+            model.save_pretrained(f"ft_model_{rs}") # save model
+            tokenizer.save_pretrained(f"ft_model_{rs}") # save tokenizer
 
         print(f"Epoch {epoch + 1}/{num_epochs} - Acc: {res[0]} - Loss: {np.mean(losses)} - Val_acc: {val_res[0]} - Val_loss: {val_res[1]} - test_acc: {test_res[0]} - test_loss: {test_res[1]}")
 
@@ -140,9 +152,13 @@ def train(rs=42, device='cuda:0'):
 
 
 def testing(rs=42, device='cuda:0'):
-    df = pd.read_csv("/data2/xwj/dataset.csv")
-    
+    '''
+    测试函数
+    '''
+    df = pd.read_csv("./dataset.csv")
+    # 加载回来tokenizer
     tokenizer = AutoTokenizer.from_pretrained(f"/home/xwj/exp33/ft_model_{rs}/", use_fast=True)
+    # 加载回model
     model = AutoModelForSequenceClassification.from_pretrained(f"/home/xwj/exp33/ft_model_{rs}/") 
     model.to(device)
 
@@ -155,9 +171,9 @@ def testing(rs=42, device='cuda:0'):
 
     model.eval()
     losses = []
-    val_preds = []
-    val_labels = []
-    preds_prob = []
+    val_preds = [] # 预测 class idx list
+    val_labels = [] # 真值class idx list
+    preds_prob = [] # 预测 prob
     with torch.no_grad():
         for batch in test_loader:
 
@@ -168,8 +184,8 @@ def testing(rs=42, device='cuda:0'):
             outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
             logits = outputs.logits
 
-            preds = torch.argmax(logits, dim=-1)
-            probs = torch.softmax(outputs.logits, dim=-1)
+            preds = torch.argmax(logits, dim=-1) # 预测class idx
+            probs = torch.softmax(outputs.logits, dim=-1) # logits -> probs
 
             loss = outputs.loss
             losses.append(loss.item())
@@ -188,7 +204,6 @@ def testing(rs=42, device='cuda:0'):
     #     print(f"{df['Id'][i]}\t{val_labels[i]}\t{val_preds[i]}\t{preds_prob[i]}")
 
     res = classification_report(val_labels, val_preds,output_dict=True)
-    print(f"{res['accuracy']}\t{res['macro avg']['f1-score']}")
     print(f"{res['accuracy']}\t{res['macro avg']['f1-score']}\t \
             {res['0']['precision']}\t{res['0']['recall']}\t{res['0']['f1-score']}\t  \
             {res['1']['precision']}\t{res['1']['recall']}\t{res['1']['f1-score']}\t  \
