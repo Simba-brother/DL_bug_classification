@@ -73,16 +73,18 @@ def evaluate(model, val_loader, device):
     return accuracy, np.mean(losses), f1
 
 def train(rs=42, device='cuda:0'):
+    # 数据集
+    df = pd.read_csv("./dataset.csv")
+    num_labels = df["LabelNum"].nunique()
+
     # 语言模型目录
     model_path= "./model"
     s_time=time.time()
     # tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
     # 预训练分类模型
-    model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=5) # 应该是6(5个DL bug,1个no DL bug)
-    # 数据集
-    df = pd.read_csv("./dataset.csv")
-
+    model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels) # 应该是6(5个DL bug,1个no DL bug)
+    
     # 划分出75个测试集，剩下的都是训练集
     X_train, X_test, y_train, y_test = train_test_split(list(df['Text']), list(df['LabelNum']), test_size=75, stratify=df['LabelNum'], random_state=int(rs))
     # 训练集中再划分出val
@@ -156,10 +158,12 @@ def testing(rs=42, device='cuda:0'):
     测试函数
     '''
     df = pd.read_csv("./dataset.csv")
+    repeat_idx = 1
+    ft_models_dir = os.path.join(exp_data_dir,"ft_models",f"ft_model_{rs}_{repeat_idx}_nocode")
     # 加载回来tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(f"/home/xwj/exp33/ft_model_{rs}/", use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained(ft_models_dir, use_fast=True)
     # 加载回model
-    model = AutoModelForSequenceClassification.from_pretrained(f"/home/xwj/exp33/ft_model_{rs}/") 
+    model = AutoModelForSequenceClassification.from_pretrained(ft_models_dir) 
     model.to(device)
 
     X_train, X_test, y_train, y_test = train_test_split(list(df['Text']), list(df['LabelNum']), test_size=75, stratify=df['LabelNum'], random_state=int(rs))
@@ -176,7 +180,6 @@ def testing(rs=42, device='cuda:0'):
     preds_prob = [] # 预测 prob
     with torch.no_grad():
         for batch in test_loader:
-
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
             labels = batch['labels'].to(device)
@@ -213,5 +216,6 @@ def testing(rs=42, device='cuda:0'):
     return accuracy,f1,res['0']['f1-score'],res['1']['f1-score'],res['2']['f1-score'],res['3']['f1-score'],res['4']['f1-score']
 
 if __name__ == "__main__":
-    train()
-    # testing()
+    exp_data_dir = "/data/mml/DL_bug_classification"
+    # train()
+    testing()
