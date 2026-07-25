@@ -5,6 +5,8 @@ import pandas as pd
 import os
 import sys
 import time
+import joblib
+
 from pathlib import Path
 
 # 属性前的空格可以避免把 OwnerUserId、ParentId 等误认为 Id
@@ -123,25 +125,52 @@ def extract_creation_dates(
     return found
 
 
-
-    
-
-
-
 def extact_time():
     df = pd.read_csv(dataset_csv_path)
     # 数据集中post的ids
     post_ids =  list(df["Id"])
     # 从Stack Exchange Data Dump下载的post集
     posts_xml = Path(posts_xml_path)
-    postId2time = extract_creation_dates(posts_xml, post_ids)
-def main():
-    
+    postId2timestr = extract_creation_dates(posts_xml, post_ids)
+    # 结果保存
+    joblib.dump(postId2timestr,"postId2timestr.joblib")
+    print(f"结果保存在 postId2timestr.joblib")
 
-    pass
+
+
+
+def add_timeField():
+    postId2timestr = joblib.load("postId2timestr.joblib")
+    df = pd.read_csv(dataset_csv_path)
+
+    # 按帖子 Id 将创建时间映射到对应的数据行。
+    df["createTime"] = df["Id"].map(postId2timestr)
+
+    # 避免部分 Id 未匹配时将缺失的创建时间静默写入 dataset.csv。
+    missing_mask = df["createTime"].isna()
+    if missing_mask.any():
+        missing_ids = df.loc[missing_mask, "Id"].tolist()
+        raise ValueError(
+            f"有 {len(missing_ids)} 个帖子未找到创建时间，"
+            f"未修改 dataset.csv。缺失的 Id：{missing_ids}"
+        )
+
+    # index=False 避免把 DataFrame 的行索引写成额外的一列。
+    df.to_csv(dataset_csv_path, index=False)
+    print(f"已将 createTime 字段写入 {dataset_csv_path}")
+
+def main():
+    extact_time()
+
+def read_result():
+    # postId2timestr = joblib.load("postId2timestr.joblib")
+    print()
 
 if __name__ == "__main__":
-    exp_data_root = "/data/mml/DL_bug_classification"
+    # exp_data_root = "/data/mml/DL_bug_classification"
     dataset_csv_path = "./dataset.csv"
-    posts_xml_path = os.path.join(exp_data_root,"Posts.xml")
-    main()
+    # posts_xml_path = os.path.join(exp_data_root,"Posts.xml")
+    # main()
+
+    # add_timeField()
+    # read_result()
