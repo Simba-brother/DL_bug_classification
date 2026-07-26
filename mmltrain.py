@@ -77,7 +77,9 @@ def train(rs=42, device='cuda:0'):
     trainval_df = pd.read_csv("reconstruct_dataset/trainval_dataset.csv")
     test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
     num_labels = trainval_df["LabelNum"].nunique() # 应该是6(5个DL bug,1个no DL bug)
-
+    # trained model save
+    save_dir = os.path.join(exp_data_dir,"trained_models")
+    os.makedirs(save_dir,exist_ok=True)
     # 语言模型目录
     model_path= "./model"
     s_time=time.time()
@@ -109,8 +111,9 @@ def train(rs=42, device='cuda:0'):
     scaler = torch.amp.GradScaler("cuda") # AMP,加速训练
 
     num_epochs = 30 # 总共训练30轮次
-    best_loss = float('inf')
+    best_loss = float('inf') # 无限大
     for epoch in range(num_epochs):
+        epoch_start_time = time.time()
         model.train() # The model enters training mode.
         i=0 # batch num 统计
         losses = [] # 记录每个batch loss
@@ -139,21 +142,30 @@ def train(rs=42, device='cuda:0'):
           val_res[1]  # 验证集平均损失 loss
           val_res[2]  # 验证集宏平均 F1
         '''
+        # 当前轮次epoch训练完了，在train/val/test上进行评估
         res = evaluate(model, train_loader, device) # trainset eval res
         val_res = evaluate(model, val_loader, device) # valset eval res
         test_res = evaluate(model, test_loader, device) # testset eval res
 
-        # 保存val_loss最小的模型
+        # 只当前random seed(rs)下保存val_loss最小的模型
         if val_res[1] < best_loss:
             best_loss = val_res[1]
-            model.save_pretrained(f"ft_model_{rs}") # save model
-            tokenizer.save_pretrained(f"ft_model_{rs}") # save tokenizer
-
-        print(f"Epoch {epoch + 1}/{num_epochs} - Acc: {res[0]} - Loss: {np.mean(losses)} - Val_acc: {val_res[0]} - Val_loss: {val_res[1]} - test_acc: {test_res[0]} - test_loss: {test_res[1]}")
-
+            model.save_pretrained(os.path.join(save_dir,f"ft_model_{rs}"))
+            tokenizer.save_pretrained(os.path.join(save_dir,f"ft_model_{rs}")) # save tokenizer
+        
+        epoch_end_time = time.time()
+        elapsed_time = int(epoch_end_time - epoch_start_time)
+        hours, remainder = divmod(elapsed_time, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        print(f"epoch:{epoch + 1}训练耗时：{hours:02d}小时 {minutes:02d}分钟 {seconds:02d}秒")
+        print(f"Epoch {epoch + 1}/{num_epochs} - Train_Acc: {res[0]} - Train_Loss: {np.mean(losses)} - Val_acc: {val_res[0]} - Val_loss: {val_res[1]} - Test_acc: {test_res[0]} - Test_loss: {test_res[1]}")
+        
     e_time=time.time()
-    print(e_time-s_time)
-
+    elapsed_time = int(e_time - s_time)
+    hours, remainder = divmod(elapsed_time, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    print(f"总训练耗时：{hours:02d}小时 {minutes:02d}分钟 {seconds:02d}秒")
+    print(f'训练模型保存在:{os.path.join(save_dir,f"ft_model_{rs}")}')
 
 def testing(rs=42, device='cuda:0'):
     '''
@@ -219,5 +231,5 @@ def testing(rs=42, device='cuda:0'):
 
 if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
-    train()
+    train(rs=42,device='cuda:0')
     # testing()
