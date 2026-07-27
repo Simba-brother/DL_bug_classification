@@ -231,5 +231,5 @@ def testing(rs=42, device='cuda:0'):
 
 if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
-    train(rs=42,device='cuda:0')
+    train(rs=42,device='cuda:1')
     # testing()
