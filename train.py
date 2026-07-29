@@ -75,7 +75,7 @@ def evaluate(model, val_loader, device):
 def train(rs=42, device='cuda:0'):
     # 数据集
     df = pd.read_csv("./dataset.csv")
-    num_labels = df["LabelNum"].nunique()
+    num_labels = df["LabelNum"].nunique() # 应该是6(5个DL bug,1个no DL bug)
 
     # 语言模型目录
     model_path= "./model"
@@ -83,7 +83,7 @@ def train(rs=42, device='cuda:0'):
     # tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
     # 预训练分类模型
-    model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels) # 应该是6(5个DL bug,1个no DL bug)
+    model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels) 
     
     # 划分出75个测试集，剩下的都是训练集
     X_train, X_test, y_train, y_test = train_test_split(list(df['Text']), list(df['LabelNum']), test_size=75, stratify=df['LabelNum'], random_state=int(rs))
@@ -105,7 +105,7 @@ def train(rs=42, device='cuda:0'):
 
     # 模型放到gpu上
     model.to(device)
-    scaler = torch.cuda.amp.GradScaler() # AMP,加速训练
+    scaler = torch.amp.GradScaler("cuda") # AMP,加速训练
 
     num_epochs = 30 
     best_loss = float('inf')
@@ -123,7 +123,7 @@ def train(rs=42, device='cuda:0'):
             attention_mask = batch['attention_mask'].to(device)
             labels = batch['labels'].to(device)
             
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast("cuda"):
                 outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
                 loss = outputs.loss # batch loss
             losses.append(loss.item())
@@ -141,15 +141,32 @@ def train(rs=42, device='cuda:0'):
         val_res = evaluate(model, val_loader, device) # valset eval res
         test_res = evaluate(model, test_loader, device) # testset eval res
 
-        # 保存val_loss最小的模型
+        best_info = {
+            "epoch":None,
+            "TrainAcc":0.0,
+            "TrainLoss":0.0,
+            "ValAcc":0.0,
+            "ValLoss":0.0,
+            "TestAcc":0.0,
+            "TestLoss":0.0
+        }
+        # val_loss最小的模型
         if val_res[1] < best_loss:
             best_loss = val_res[1]
-            model.save_pretrained(f"ft_model_{rs}") # save model
-            tokenizer.save_pretrained(f"ft_model_{rs}") # save tokenizer
+            best_info["epoch"] = epoch+1
+            best_info["TrainAcc"] = res[0]
+            best_info["TrainLoss"] = np.mean(losses)
+            best_info["ValAcc"] = val_res[0]
+            best_info["ValLoss"] = val_res[1]
+            best_info["TestAcc"] = test_res[0]
+            best_info["TestLoss"] = test_res[1]
+            # model.save_pretrained(f"ft_model_{rs}") # save model
+            # tokenizer.save_pretrained(f"ft_model_{rs}") # save tokenizer
 
         print(f"Epoch {epoch + 1}/{num_epochs} - Acc: {res[0]} - Loss: {np.mean(losses)} - Val_acc: {val_res[0]} - Val_loss: {val_res[1]} - test_acc: {test_res[0]} - test_loss: {test_res[1]}")
 
     e_time=time.time()
+    print(f"Best Info: Epoch {best_info["epoch"]}/{num_epochs} - Acc: {best_info["TrainAcc"]} - Loss: {best_info["TrainLoss"]} - Val_acc: {best_info["ValAcc"]} - Val_loss: {best_info["ValLoss"]} - test_acc: {best_info["TestAcc"]} - test_loss: {best_info["TestLoss"]}")
     print(e_time-s_time)
 
 
@@ -217,5 +234,5 @@ def testing(rs=42, device='cuda:0'):
 
 if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
-    # train()
-    testing()
+    train(rs=42, device='cuda:0')
+    # testing()

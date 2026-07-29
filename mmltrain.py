@@ -4,13 +4,13 @@ import torch
 from torch.optim import AdamW
 import pandas as pd
 import time
-import sys
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, classification_report
 from sklearn.model_selection import train_test_split
 from collections import Counter
 import os
-import shutil
+from collections import defaultdict
+import joblib
 
 
 class TextDataset(Dataset):
@@ -147,9 +147,25 @@ def train(rs=42, device='cuda:0'):
         val_res = evaluate(model, val_loader, device) # valset eval res
         test_res = evaluate(model, test_loader, device) # testset eval res
 
+        best_info = {
+            "epoch":None,
+            "TrainAcc":0.0,
+            "TrainLoss":0.0,
+            "ValAcc":0.0,
+            "ValLoss":0.0,
+            "TestAcc":0.0,
+            "TestLoss":0.0
+        }
         # 只当前random seed(rs)下保存val_loss最小的模型
         if val_res[1] < best_loss:
             best_loss = val_res[1]
+            best_info["epoch"] = epoch+1
+            best_info["TrainAcc"] = res[0]
+            best_info["TrainLoss"] = np.mean(losses)
+            best_info["ValAcc"] = val_res[0]
+            best_info["ValLoss"] = val_res[1]
+            best_info["TestAcc"] = test_res[0]
+            best_info["TestLoss"] = test_res[1]
             model.save_pretrained(os.path.join(save_dir,f"ft_model_{rs}"))
             tokenizer.save_pretrained(os.path.join(save_dir,f"ft_model_{rs}")) # save tokenizer
         
@@ -164,8 +180,10 @@ def train(rs=42, device='cuda:0'):
     elapsed_time = int(e_time - s_time)
     hours, remainder = divmod(elapsed_time, 3600)
     minutes, seconds = divmod(remainder, 60)
+    print(f"Best Info: Epoch {best_info['epoch']}/{num_epochs} - Acc: {best_info['TrainAcc']} - Loss: {best_info['TrainLoss']} - Val_acc: {best_info['ValAcc']} - Val_loss: {best_info['ValLoss']} - test_acc: {best_info['TestAcc']} - test_loss: {best_info['TestLoss']}")
     print(f"总训练耗时：{hours:02d}小时 {minutes:02d}分钟 {seconds:02d}秒")
     print(f'训练模型保存在:{os.path.join(save_dir,f"ft_model_{rs}")}')
+    return best_info
 
 def testing(rs=42, device='cuda:0'):
     '''
@@ -229,7 +247,22 @@ def testing(rs=42, device='cuda:0'):
             {res['4']['precision']}\t{res['4']['recall']}\t{res['4']['f1-score']}")
     return accuracy,f1,res['0']['f1-score'],res['1']['f1-score'],res['2']['f1-score'],res['3']['f1-score'],res['4']['f1-score']
 
+
+
+def main():
+    train_res = defaultdict(float)
+    repeat_num = 15 # 重复实验次数
+    for rs in range(42,57):
+        print(f"随机种子:{rs}")
+        bestinfo = train(rs=rs,device='cuda:1')
+        test_acc = bestinfo["TestAcc"]
+        train_res[rs] = test_acc
+    # 保存训练结果
+    joblib.dump(train_res,os.path.join(exp_data_dir,"trained_models","res.joblib"))
+    print(f"{repeat_num}次结果保存在:{os.path.join(exp_data_dir,'trained_models','res.joblib')}")
+
+
 if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
-    train(rs=42,device='cuda:1')
+    main()
     # testing()
