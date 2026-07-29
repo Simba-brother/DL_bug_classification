@@ -112,6 +112,15 @@ def train(rs=42, device='cuda:0'):
 
     num_epochs = 30 # 总共训练30轮次
     best_loss = float('inf') # 无限大
+    best_info = {
+            "epoch":None,
+            "TrainAcc":0.0,
+            "TrainLoss":0.0,
+            "ValAcc":0.0,
+            "ValLoss":0.0,
+            "TestAcc":0.0,
+            "TestLoss":0.0
+    }
     for epoch in range(num_epochs):
         epoch_start_time = time.time()
         model.train() # The model enters training mode.
@@ -147,15 +156,7 @@ def train(rs=42, device='cuda:0'):
         val_res = evaluate(model, val_loader, device) # valset eval res
         test_res = evaluate(model, test_loader, device) # testset eval res
 
-        best_info = {
-            "epoch":None,
-            "TrainAcc":0.0,
-            "TrainLoss":0.0,
-            "ValAcc":0.0,
-            "ValLoss":0.0,
-            "TestAcc":0.0,
-            "TestLoss":0.0
-        }
+        
         # 只当前random seed(rs)下保存val_loss最小的模型
         if val_res[1] < best_loss:
             best_loss = val_res[1]
@@ -254,7 +255,7 @@ def main():
     repeat_num = 15 # 重复实验次数
     for rs in range(42,57):
         print(f"随机种子:{rs}")
-        bestinfo = train(rs=rs,device='cuda:1')
+        bestinfo = train(rs=rs,device='cuda:2')
         test_acc = bestinfo["TestAcc"]
         train_res[rs] = test_acc
     # 保存训练结果
