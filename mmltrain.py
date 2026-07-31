@@ -257,7 +257,7 @@ def testing(rs=42, device='cuda:0'):
 def main():
     train_res = defaultdict(float)
     repeat_num = 15 # 重复实验次数
-    for rs in range(42,57):
+    for rs in range(42,42+repeat_num):
         print(f"随机种子:{rs}")
         bestinfo = train(rs=rs,device='cuda:1')
         test_acc = bestinfo["TestAcc"]
