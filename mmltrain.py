@@ -80,8 +80,12 @@ def train(rs=42, device='cuda:0'):
     # trained model save
     save_dir = os.path.join(exp_data_dir,"trained_models")
     os.makedirs(save_dir,exist_ok=True)
-    # 语言模型目录
-    model_path= "./model"
+
+    # LLM模型目录
+    # model_path= "./model"
+    # model_path = "./codebert-base"
+    model_path = "./roberta-base"
+
     s_time=time.time()
     # tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
@@ -255,12 +259,14 @@ def main():
     repeat_num = 15 # 重复实验次数
     for rs in range(42,57):
         print(f"随机种子:{rs}")
-        bestinfo = train(rs=rs,device='cuda:2')
+        bestinfo = train(rs=rs,device='cuda:1')
         test_acc = bestinfo["TestAcc"]
         train_res[rs] = test_acc
     # 保存训练结果
-    joblib.dump(train_res,os.path.join(exp_data_dir,"trained_models","res.joblib"))
-    print(f"{repeat_num}次结果保存在:{os.path.join(exp_data_dir,'trained_models','res.joblib')}")
+    save_dir = os.path.join(exp_data_dir,"trained_roberta_models")
+    os.makedirs(save_dir,exist_ok=True)
+    joblib.dump(train_res,os.path.join(save_dir,"res.joblib"))
+    print(f"{repeat_num}次结果保存在:{os.path.join(save_dir,'res.joblib')}")
 
 
 if __name__ == "__main__":

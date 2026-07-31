@@ -24,8 +24,10 @@ __MACOSX/
 # 模型
 *.pth
 *.pt
+model/
+codebert-base
+roberta-base/
 
 # 数据集
 data/
-model/
 Replication_Package/
