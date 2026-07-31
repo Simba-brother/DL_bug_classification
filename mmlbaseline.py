@@ -126,7 +126,6 @@ def baseline_method(trainval_df,test_df,rs,baseline_name):
     val_size = int(0.1 * trainval_df.shape[0])
     X_train, X_val, y_train, y_val = train_test_split(list(trainval_df['Text']), list(trainval_df['LabelNum']), 
                                                       test_size=val_size, stratify=trainval_df['LabelNum'], random_state=rs)
-    
     # test_df中构建出X_test,y_test
     X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
 
@@ -156,7 +155,7 @@ def baseline_method(trainval_df,test_df,rs,baseline_name):
     # 保存
     save_dir = os.path.join(exp_data_dir,f"trained_{baseline_name}",f"seed_{rs}")
     os.makedirs(save_dir,exist_ok=True)
-    for cls_name,df in result_dfs:
+    for cls_name,df in result_dfs.items():
         save_file_name = cls_name+".csv"
         save_file_path = os.path.join(save_dir,save_file_name)
         df.to_csv(save_file_path,index=False)
@@ -165,7 +164,7 @@ def baseline_method(trainval_df,test_df,rs,baseline_name):
 
 def main():
     s_time=time.time()
-    method_name = "word2vec" # word2vec|tfidf
+    method_name = "tfidf" # word2vec|tfidf
     print(f"基线名称:{method_name}")
     repeat_num = 15 # 重复实验次数
     for rs in range(42,42+repeat_num):
