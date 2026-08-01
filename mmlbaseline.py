@@ -20,41 +20,38 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report, log_loss
 
-def word2vec_embedding(texts)->list:
-    # 获得停用词set
+def tokenize_texts(texts):
+    """分词并删除非字母词和英文停用词。"""
     stop_words = set(stopwords.words('english'))
-    sentences = []
-    for i in texts:
-        # token化+删除停用词
-        new_str = [word for word in word_tokenize(i.lower()) if word.isalpha() and word not in stop_words]
-        sentences.append(new_str)
-    # 获得w2v的模型
-    model = Word2Vec(sentences, vector_size=100, window=5, min_count=2, workers=4)
-    # 存储每个句子的向量（句向量）。
+    return [
+        [
+            word
+            for word in word_tokenize(text.lower())
+            if word.isalpha() and word not in stop_words
+        ]
+        for text in texts
+    ]
+
+
+def word2vec_embedding(tokenized_texts, model):
+    """使用已经在训练集上拟合的 Word2Vec 模型生成句向量。"""
     sentences_vector = []
-    # 遍历每个句子
-    for sentence in sentences:
-        # 获得该句子每个词的vectior
+    for sentence in tokenized_texts:
         word_vectors = [model.wv[word] for word in sentence if word in model.wv]
         if word_vectors:
-            # 句子向量其实就是词向量的均值
             sentence_vector = np.mean(word_vectors, axis=0)
         else:
-            sentence_vector = np.zeros(model.vector_size)  # 如果没有有效词，返回零向量
+            sentence_vector = np.zeros(model.vector_size)
         sentences_vector.append(sentence_vector)
     return sentences_vector
 
-def tfidf_embedding(texts):
-    stop_words = set(stopwords.words('english'))
-    sentences = []
-    for i in texts:
-        new_str = " ".join([word for word in word_tokenize(i.lower()) if word.isalpha() and word not in stop_words])
-        sentences.append(new_str)
 
-    vectorizer = TfidfVectorizer()
-    tfidf_matrix = vectorizer.fit_transform(sentences)
-    
-    return tfidf_matrix.toarray()
+def tfidf_embedding(tokenized_texts, vectorizer, fit=False):
+    """拟合或复用同一个 TF-IDF 向量器生成文本向量。"""
+    sentences = [' '.join(tokens) for tokens in tokenized_texts]
+    if fit:
+        return vectorizer.fit_transform(sentences)
+    return vectorizer.transform(sentences)
 
 
 
@@ -63,8 +60,7 @@ def train_pred(train_vector, val_vector, test_vector, y_train, y_val, y_test):
     knn_n_neighbors = [5,6,7]
     clf_candidates = {
         'LR': [
-            (f'random_state={seed}', LogisticRegression(random_state=seed))
-            for seed in clf_random_states
+            ('max_iter=1000', LogisticRegression(max_iter=1000))
         ],
         'DT': [
             (f'random_state={seed}', DecisionTreeClassifier(random_state=seed))
@@ -129,17 +125,30 @@ def baseline_method(trainval_df,test_df,rs,baseline_name):
     # test_df中构建出X_test,y_test
     X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
 
-    print(f"训练集大小:{len(X_train)},测试集大小:{len(X_test)}")
+    print(f"训练集大小:{len(X_train)},验证集大小:{len(X_val)}, 测试集大小:{len(X_test)}")
+    train_tokens = tokenize_texts(X_train)
+    val_tokens = tokenize_texts(X_val)
+    test_tokens = tokenize_texts(X_test)
+
     if baseline_name == "word2vec":
-        # 都是句子level的vector
-        train_vector = word2vec_embedding(X_train)
-        val_vector = word2vec_embedding(X_val)
-        test_vector = word2vec_embedding(X_test)
+        # Word2Vec 只在训练集上拟合，三组数据共享同一词向量空间。
+        word2vec_model = Word2Vec(
+            train_tokens,
+            vector_size=100,
+            window=5,
+            min_count=2,
+            workers=1,
+            seed=rs,
+        )
+        train_vector = word2vec_embedding(train_tokens, word2vec_model)
+        val_vector = word2vec_embedding(val_tokens, word2vec_model)
+        test_vector = word2vec_embedding(test_tokens, word2vec_model)
     elif baseline_name == 'tfidf':
-        # 都是句子level的vector
-        train_vector = tfidf_embedding(X_train)
-        val_vector = tfidf_embedding(X_val)
-        test_vector = tfidf_embedding(X_test)
+        # TF-IDF 只在训练集上拟合，验证集和测试集复用训练集词表。
+        vectorizer = TfidfVectorizer()
+        train_vector = tfidf_embedding(train_tokens, vectorizer, fit=True)
+        val_vector = tfidf_embedding(val_tokens, vectorizer)
+        test_vector = tfidf_embedding(test_tokens, vectorizer)
     else:
         raise Exception("baseline name参数错误")
 
