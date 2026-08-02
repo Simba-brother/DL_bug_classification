@@ -6,33 +6,10 @@ import anthropic
 from sklearn.preprocessing import label_binarize
 import os
 
-'''
-def query_chatgpt(content):
-    openai.api_key = 'xxx'
-    # openai.base_url = "https://api.chatanywhere.cn"
-    # openai.api_key = 'xx'
-    messages = [
-        # {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": content}
-    ]
-
-    # 调用ChatGPT API
-    response = openai.chat.completions.create(
-        model="gpt-5.1",  # 或者 "gpt-3.5-turbo" 具体看你要使用的模型
-        messages=messages,
-        # max_tokens=1500,  # 可选参数，定义响应的最大tokens数
-        # n=1,  # 可选参数，定义要生成的响应数量
-        # stop=None,  # 可选参数，定义停止生成的标志
-        temperature=0,  # 可选参数，定义输出的随机性
-    )
-
-    # 输出响应
-    # print(response.choices[0].message.content)
-    return response.choices[0].message.content
-'''
 def query_chatgpt(content: str) -> str:
     api_key = os.getenv("OPENAI_API_KEY")
-    base_url = os.getenv("OPENAI_BASE_URL")
+    # base_url = os.getenv("OPENAI_BASE_URL")
+    base_url = "https://router.latyas.com/v1"
 
     if not api_key:
         raise RuntimeError("未设置环境变量 OPENAI_API_KEY")
@@ -43,13 +20,40 @@ def query_chatgpt(content: str) -> str:
     messages = [{"role": "user", "content": content}]
 
     resp = client.chat.completions.create(
-        model="gpt-5.6-sol",
+        model= 'gpt-5.5',# "gpt-5.6-sol",
         messages=messages,
         temperature=0.2,  # 可选参数，定义输出的随机性
     )
     return resp.choices[0].message.content or ""
 
-def chatgpt(df):
+def query_claude(content: str) -> str:
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    base_url = os.getenv("ANTHROPIC_BASE_URL")
+    if not api_key:
+        raise RuntimeError("未设置环境变量 ANTHROPIC_API_KEY")
+    client = anthropic.Anthropic(
+        api_key=api_key,
+        base_url=base_url,
+    )
+    # 结构化 message
+    messages = [
+        {
+            "role": "user",
+            "content": content,
+        }
+    ]
+    resp = client.messages.create(
+        model="claude-opus-4-6",
+        messages=messages,
+        max_tokens=1000,
+        temperature=0.2,
+    )
+    return resp.content[0].text or ""
+
+def chat(df,llm_name):
+    '''
+    llm_name:chatgpt|claude
+    '''
     res = []
     # 遍历测试集
     for i in range(len(df)):
@@ -60,17 +64,28 @@ def chatgpt(df):
             # 读取提示词模版
             query = f.read().replace("<Text>",text) # 把提示词模版中的<Text>替换成文本内容
             s_time=time.time()
-            response = query_chatgpt(query)
+            if llm_name == "chatgpt":
+                response = query_chatgpt(query)
+            elif llm_name == "claude":
+                response = query_claude(query)
+            else:
+                raise Exception("llm_name参数设置错误")
             e_time=time.time()
             run_time = e_time-s_time
-            with open(f"chatgpt_res/answer/{id}.txt",'w',encoding='utf-8') as f1:
+            res_save_dir = os.path.join(exp_data_dir,f"{llm_name}_res","answer")
+            os.makedirs(res_save_dir,exist_ok=True)
+            with open(f"{res_save_dir}/{id}.txt",'w',encoding='utf-8') as f1:
                 f1.write(response)
-            with open(f"chatgpt_res/time/{id}.txt",'w',encoding='utf-8') as f2:
+            time_save_dir = os.path.join(exp_data_dir,f"{llm_name}_res","time")
+            os.makedirs(time_save_dir,exist_ok=True)
+            with open(f"{time_save_dir}/{id}.txt",'w',encoding='utf-8') as f2:
                 f2.write(str(run_time))            
             print(f"{id}\t{response}\t{label}\t{run_time}")
             res.append({'Id':id, 'Answer':response, 'Label': label, 'Time': run_time})
     res_df = pd.DataFrame(res)
-    res_df.to_csv("chatgpt.csv",index=False)
+    csv_save_path = os.path.join(exp_data_dir,f"{llm_name}_res",f"{llm_name}.csv")
+    res_df.to_csv(csv_save_path,index=False)
+    print(f"结果保存在:{csv_save_path}")
 
 def evaluate():
     df = pd.read_csv("results/claude/claude.csv")
@@ -111,23 +126,6 @@ def evaluate():
 
     data_df.to_csv(f"all_res_claude.csv",index=False)
 
-def query_claude(content):
-    client = anthropic.Anthropic(api_key='xx')
-    message = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=1000,
-        messages=[
-            {
-                "role": "user",
-                "content": content
-            }
-        ],
-        temperature=0
-        
-    )
-    # print(message.content[0].text)
-    return message.content[0].text
-
 def claude():
     df = pd.read_csv("dataset/dataset.csv")
     res = []
@@ -167,18 +165,12 @@ def all_time():
     print(claude_time/600, chatgpt_time/600)     
 
 def main():
-    method = "chatgpt" # chatgpt|claude
-    chatgpt(test_df)
+    llm_name = "chatgpt" # chatgpt|claude
+    chat(test_df,llm_name)
 
 if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
-    # 数据集(测试集划分出来)
-    # trainval_df = pd.read_csv("reconstruct_dataset/trainval_dataset.csv")
     test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
     main()
-    # chatgpt()
     # evaluate()
-    # query_claude()
-    # claude()
     # all_time()
-    

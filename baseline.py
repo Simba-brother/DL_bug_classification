@@ -3,7 +3,6 @@ import time
 import pandas as pd
 import numpy as np
 from gensim.models import Word2Vec
-import mml_nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 
