@@ -174,7 +174,7 @@ def export_post_xml(
     return saved_paths
 
 
-def remove_code(
+def get_pid2nocode(
     post_ids: list[int],
     exported_posts_dir: Path | str = "exported_posts",
 ) -> dict[int, str]:
@@ -254,15 +254,38 @@ def remove_code(
 
     return post_id_to_text
 
+def construct_nocode_csv(post_ids):
+    pid2nocode = get_pid2nocode(post_ids)
+    df = pd.read_csv(dataset_csv_path)
+    nocode_df = df.copy()
+
+    # 根据 Id 获取移除代码后的文本，只替换 Text 列。
+    nocode_text = nocode_df["Id"].map(pid2nocode)
+    missing_mask = nocode_text.isna()
+    if missing_mask.any():
+        missing_ids = nocode_df.loc[missing_mask, "Id"].tolist()
+        raise ValueError(
+            f"有 {len(missing_ids)} 个 PostId 没有对应的无代码文本，"
+            f"未构建 nocode DataFrame。缺失 ID：{missing_ids}"
+        )
+
+    nocode_df["Text"] = nocode_text
+    nocode_df.to_csv("nocode_dataset.csv", index=False)
+    print("nocode数据集保存在nocode_dataset.csv")
+    return nocode_df
+
 def main():
-    posts_xml = Path(posts_xml_path)
     df = pd.read_csv(dataset_csv_path)
     # 数据集中post的ids
     post_ids =  list(df["Id"])
-    # remove_code(posts_xml,post_ids)
+    construct_nocode_csv(post_ids)
+
+
+    '''
     output_dir = os.path.join(exp_data_root,"exported_posts")
     os.makedirs(output_dir,exist_ok=True)
     export_post_xml(post_ids, posts_xml,output_dir)
+    '''
 
 if __name__ == "__main__":
     exp_data_root = "/data/mml/DL_bug_classification"
