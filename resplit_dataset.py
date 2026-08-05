@@ -1,6 +1,8 @@
 '''
 基于时间对dataset.csv进行切分出train/eval/test
 '''
+import os
+
 import pandas as pd
 
 def choose_split_time(
@@ -215,9 +217,78 @@ def main():
         # 构建出训练集
         construct_trainvalset()
 
+def split_nocode_dataset():
+    test_df = pd.read_csv(test_dataset_csv_path)
+    trainval_df = pd.read_csv(trainval_dataset_csv_path)
+    if "Id" not in test_df.columns or "Id" not in trainval_df.columns:
+        raise ValueError(
+            "test_dataset.csv 和 trainval_dataset.csv 都必须包含 Id 字段。"
+        )
+
+    nocode_df = pd.read_csv(nocode_dataset_csv_path)
+    if "Id" not in nocode_df.columns:
+        raise ValueError("nocode_dataset.csv 必须包含 Id 字段。")
+
+    test_ids = list(test_df["Id"])
+    trainval_ids = list(trainval_df["Id"])
+    test_id_set = set(test_ids)
+    trainval_id_set = set(trainval_ids)
+    nocode_id_set = set(nocode_df["Id"])
+
+    overlap_ids = test_id_set & trainval_id_set
+    if overlap_ids:
+        raise ValueError(
+            "test_dataset.csv 和 trainval_dataset.csv 存在重复 Id："
+            f"{sorted(overlap_ids)}"
+        )
+
+    missing_test_ids = test_id_set - nocode_id_set
+    missing_trainval_ids = trainval_id_set - nocode_id_set
+    if missing_test_ids or missing_trainval_ids:
+        raise ValueError(
+            "nocode_dataset.csv 缺少切分所需的 Id。"
+            f"test 缺失：{sorted(missing_test_ids)}；"
+            f"trainval 缺失：{sorted(missing_trainval_ids)}"
+        )
+
+    nocode_test_df = pd.DataFrame({"Id": test_ids}).merge(
+        nocode_df,
+        on="Id",
+        how="left",
+        sort=False,
+    )
+    nocode_trainval_df = pd.DataFrame({"Id": trainval_ids}).merge(
+        nocode_df,
+        on="Id",
+        how="left",
+        sort=False,
+    )
+
+    nocode_output_dir = "./reconstruct_dataset/nocode"
+    os.makedirs(nocode_output_dir, exist_ok=True)
+    nocode_test_dataset_csv_path = os.path.join(
+        nocode_output_dir,
+        "test_dataset.csv",
+    )
+    nocode_trainval_dataset_csv_path = os.path.join(
+        nocode_output_dir,
+        "trainval_dataset.csv",
+    )
+
+    nocode_test_df.to_csv(nocode_test_dataset_csv_path, index=False)
+    nocode_trainval_df.to_csv(nocode_trainval_dataset_csv_path, index=False)
+
+    print(f"已生成 {nocode_test_dataset_csv_path}")
+    print(f"nocode test 集样本数：{len(nocode_test_df)}")
+    print(f"已生成 {nocode_trainval_dataset_csv_path}")
+    print(f"nocode trainval 集样本数：{len(nocode_trainval_df)}")
+
+
 if __name__ == "__main__":
     dataset_csv_path = "./dataset.csv"
     test_dataset_csv_path = "./reconstruct_dataset/test_dataset.csv"
     trainval_dataset_csv_path = "./reconstruct_dataset/trainval_dataset.csv"
-    main()
+    nocode_dataset_csv_path = "nocode_dataset.csv"
 
+    # main()
+    split_nocode_dataset()
