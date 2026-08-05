@@ -238,7 +238,7 @@ def main():
     print(f"当前进程 PID: {os.getpid()}")
     start_time = time.monotonic()
     exp_data_dir = "/data/mml/DL_bug_classification"
-    llm_name = "chatgpt"  # chatgpt|claude
+    llm_name = "claude"  # chatgpt|claude
     test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
     for repeat in range(2,1+15):
         print(f"=== 实验重复:{repeat} ===")
