@@ -72,20 +72,12 @@ def evaluate(model, val_loader, device):
     f1 = f1_score(val_labels, val_preds, average='macro')
     return accuracy, np.mean(losses), f1
 
-def train(rs=42, device='cuda:0'):
+def train(model_path,save_dir,rs=42, device='cuda:0'):
     # 数据集
     trainval_df = pd.read_csv("reconstruct_dataset/trainval_dataset.csv")
     test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
     num_labels = trainval_df["LabelNum"].nunique() # 应该是6(5个DL bug,1个no DL bug)
-    # trained model save
-    save_dir = os.path.join(exp_data_dir,"trained_models")
-    os.makedirs(save_dir,exist_ok=True)
-
-    # LLM模型目录
-    # model_path= "./model"
-    # model_path = "./codebert-base"
-    model_path = "./roberta-base"
-
+    
     s_time=time.time()
     # tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
@@ -94,7 +86,11 @@ def train(rs=42, device='cuda:0'):
     
     # 从trainval中划分出，train和val
     val_size = int(0.1 * trainval_df.shape[0])
-    X_train, X_val, y_train, y_val = train_test_split(list(trainval_df['Text']), list(trainval_df['LabelNum']), test_size=val_size, stratify=trainval_df['LabelNum'], random_state=int(rs))
+    X_train, X_val, y_train, y_val = train_test_split(list(trainval_df['Text']), 
+                                                      list(trainval_df['LabelNum']), 
+                                                      test_size=val_size, 
+                                                      stratify=trainval_df['LabelNum'], 
+                                                      random_state=int(rs))
     # test_df中构建出X_test,y_test
     X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
 
@@ -190,86 +186,33 @@ def train(rs=42, device='cuda:0'):
     print(f'训练模型保存在:{os.path.join(save_dir,f"ft_model_{rs}")}')
     return best_info
 
-def testing(rs=42, device='cuda:0'):
-    '''
-    测试函数
-    '''
-    df = pd.read_csv("./dataset.csv")
-    repeat_idx = 1
-    ft_models_dir = os.path.join(exp_data_dir,"ft_models",f"ft_model_{rs}_{repeat_idx}_nocode")
-    # 加载回来tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(ft_models_dir, use_fast=True)
-    # 加载回model
-    model = AutoModelForSequenceClassification.from_pretrained(ft_models_dir) 
-    model.to(device)
-
-    X_train, X_test, y_train, y_test = train_test_split(list(df['Text']), list(df['LabelNum']), test_size=75, stratify=df['LabelNum'], random_state=int(rs))
-    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=75, stratify=y_train, random_state=int(rs))
-    
-    train_loader = DataLoader(TextDataset(X_train, y_train, tokenizer),batch_size=32, shuffle=True)
-    val_loader = DataLoader(TextDataset(X_val, y_val, tokenizer), batch_size=32)
-    test_loader = DataLoader(TextDataset(X_test, y_test, tokenizer), batch_size=32)
-
-    model.eval()
-    losses = []
-    val_preds = [] # 预测 class idx list
-    val_labels = [] # 真值class idx list
-    preds_prob = [] # 预测 prob
-    with torch.no_grad():
-        for batch in test_loader:
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            labels = batch['labels'].to(device)
-
-            outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
-            logits = outputs.logits
-
-            preds = torch.argmax(logits, dim=-1) # 预测class idx
-            probs = torch.softmax(outputs.logits, dim=-1) # logits -> probs
-
-            loss = outputs.loss
-            losses.append(loss.item())
-
-            val_preds.extend(preds.cpu().numpy()) 
-            val_labels.extend(labels.cpu().numpy())
-            preds_prob.extend(probs.max(dim=-1).values.cpu().numpy())
-
-    accuracy = accuracy_score(val_labels, val_preds)
-    f1 = f1_score(val_labels, val_preds, average='macro')
-    print(classification_report(val_labels, val_preds))
-    print(accuracy, np.mean(losses), f1)
-    # print(res_dict)
-
-    # for i in range(len(val_labels)):
-    #     print(f"{df['Id'][i]}\t{val_labels[i]}\t{val_preds[i]}\t{preds_prob[i]}")
-
-    res = classification_report(val_labels, val_preds,output_dict=True)
-    print(f"{res['accuracy']}\t{res['macro avg']['f1-score']}\t \
-            {res['0']['precision']}\t{res['0']['recall']}\t{res['0']['f1-score']}\t  \
-            {res['1']['precision']}\t{res['1']['recall']}\t{res['1']['f1-score']}\t  \
-            {res['2']['precision']}\t{res['2']['recall']}\t{res['2']['f1-score']}\t  \
-            {res['3']['precision']}\t{res['3']['recall']}\t{res['3']['f1-score']}\t  \
-            {res['4']['precision']}\t{res['4']['recall']}\t{res['4']['f1-score']}")
-    return accuracy,f1,res['0']['f1-score'],res['1']['f1-score'],res['2']['f1-score'],res['3']['f1-score'],res['4']['f1-score']
-
-
-
 def main():
-    train_res = defaultdict(float)
+    model_name = "robert" # sobert|codebert|robert
+    model_path = None
+    if model_name == "sobert":
+        model_path= "./model"
+    elif model_name == "codebert":
+        model_path = "./codebert-base"
+    elif model_name == "robert":
+        model_path = "./roberta-base"
+    else:
+        raise Exception("model path 参数错误")
+    testacc_res = defaultdict(float)
     repeat_num = 15 # 重复实验次数
+    save_dir = os.path.join(exp_data_dir,f"trained_models",model_name)
+    os.makedirs(save_dir,exist_ok=True)
     for rs in range(42,42+repeat_num):
         print(f"随机种子:{rs}")
-        bestinfo = train(rs=rs,device='cuda:1')
+        bestinfo = train(model_path,save_dir,rs=rs,device='cuda:3')
         test_acc = bestinfo["TestAcc"]
-        train_res[rs] = test_acc
-    # 保存训练结果
-    save_dir = os.path.join(exp_data_dir,"trained_roberta_models")
-    os.makedirs(save_dir,exist_ok=True)
-    joblib.dump(train_res,os.path.join(save_dir,"res.joblib"))
-    print(f"{repeat_num}次结果保存在:{os.path.join(save_dir,'res.joblib')}")
+        testacc_res[rs] = test_acc
+    # 保存testacc结果
+    save_file_path = os.path.join(save_dir,"test_acc.joblib")
+    joblib.dump(testacc_res,save_file_path)
+    print(f"{repeat_num}次结果保存在:{save_file_path}")
 
 
 if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
     main()
-    # testing()
+

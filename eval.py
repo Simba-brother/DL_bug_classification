@@ -91,23 +91,72 @@ def testing(df:pd.DataFrame,rs=42, device='cuda:0'):
     # 返回统计指标
     return res
 
-def sobert():
-    save_dir = os.path.join(exp_data_dir,"sobert_res")
+def eval_model(model_name:str,device:str):
+    '''
+    model_name:sobert|codebert|robert
+    device:'cuda:0'
+    '''
+    assert model_name in ["sobert","codebert","robert"], "model_name 传参错误"
+    save_dir = os.path.join(exp_data_dir,f"{model_name}_res")
     os.makedirs(save_dir,exist_ok=True)
     save_file_name = "res.joblib"
     save_path = os.path.join(save_dir,save_file_name)
     test_df = pd.read_csv(test_csv_path)
     all_res = {}
     for rs in range(42,42+15):
-        res = testing(test_df,rs=42, device='cuda:1')
+        print(f"随机数种子:{rs}")
+        res = testing(test_df,rs=42, device=device)
         all_res[rs] = res
     joblib.dump(all_res,save_path)
-    print(f"sobert实验指标保存在:{save_path}")
+    print(f"{model_name}实验指标保存在:{save_path}")
 
+def eval_tfidf_and_word2vec(method_name):
+    assert method_name in ["tfidf","word2vec"], "method_name 传参错误"
+    save_dir = os.path.join(exp_data_dir,f"{method_name}_res")
+    os.makedirs(save_dir,exist_ok=True)
+    save_file_name = "res.joblib"
+    save_path = os.path.join(save_dir,save_file_name)
+    all_res = {}
+    for rs in range(42,42+15):
+        print(f"随机数种子:{rs}")
+        all_res[rs] = {}
+        predict_dir = os.path.join(exp_data_dir,f"trained_{method_name}",f"seed_{rs}")
+        for cls_name in ["LR","DT","RF","SVM","KNN"]:
+            print(f"分类器名称:{cls_name}")
+            cls_df = pd.read_csv(os.path.join(predict_dir,f"{cls_name}.csv"))
+            gt_labels = list(cls_df["True"])
+            p_labels = list(cls_df["Pred"])
+            cls_res = classification_report(gt_labels, p_labels,output_dict=True)
+            all_res[rs][cls_name] = cls_res
+    joblib.dump(all_res,save_path)
+    print(f"{method_name}实验指标保存在:{save_path}")
+
+def eval_llm(llm_name:str):
+    '''
+    llm_name:claude|chatgpt
+    '''
+    assert llm_name in ["claude","chatgpt"], "llm_name 传参错误"
+    save_dir = os.path.join(exp_data_dir,f"{llm_name}_res")
+    os.makedirs(save_dir,exist_ok=True)
+    save_file_name = "res.joblib"
+    save_path = os.path.join(save_dir,save_file_name)
+    all_res = {}
+    for repeat in range(1,16):
+        print(f"重复id:{repeat}")
+        all_res[repeat] = {}
+        llm_df = pd.read_csv(os.path.join(exp_data_dir,f"{llm_name}_res",f"repeat_{repeat}",f"{llm_name}.csv"))
+        gt_labels = list(llm_df["True"])
+        p_labels = list(llm_df["Pred"])
+        llm_res = classification_report(gt_labels, p_labels,output_dict=True)
+        all_res[repeat] = llm_res
+    joblib.dump(all_res,save_path)
+    print(f"{llm_name}实验指标保存在:{save_path}")
 
 def main():
-    sobert()
-
+    # device = "cuda:0"
+    # eval_model("sobert") # sobert|codebert|robert
+    # eval_tfidf_and_word2vec("tfidf")
+    eval_llm("claude")
 if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
     test_csv_path = "reconstruct_dataset/test_dataset.csv"
