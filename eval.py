@@ -1,0 +1,114 @@
+'''
+基于trained model/测试集上的预测，对性能指标进行评估
+'''
+from transformers import AutoTokenizer, AutoModel, AutoModelForSequenceClassification
+from torch.utils.data import DataLoader, Dataset, random_split, Subset
+import torch
+from torch.optim import AdamW
+import pandas as pd
+import time
+import sys
+import numpy as np
+from sklearn.metrics import accuracy_score, f1_score, classification_report
+from sklearn.model_selection import train_test_split
+from collections import Counter
+import os
+import shutil
+import joblib
+
+class TextDataset(Dataset):
+    def __init__(self, texts, labels, tokenizer, max_length=512):
+        self.texts = texts
+        self.labels = labels
+        self.tokenizer = tokenizer
+        self.max_length = max_length # Maximum length of each sentence(text)
+
+    def __len__(self):
+        return len(self.texts) # Number of sentences(text) in the dataset.
+
+    def __getitem__(self, idx):
+        text = self.texts[idx] # Obtain the text based on the idx.
+        label = self.labels[idx] # Obtain the label based on the idx.
+        # Tokenize the text.
+        inputs = self.tokenizer(
+            str(text),
+            max_length=self.max_length,
+            padding='max_length',
+            truncation=True,
+            return_tensors='pt'
+        )
+
+        '''
+        随后，DataLoader 会把多条样本组合成一个批次。假设 batch_size=32，结果大致为：
+        batch['input_ids'].shape       # [32, 512]
+        batch['attention_mask'].shape  # [32, 512]
+        batch['labels'].shape          # [32]
+        '''
+        return {
+            'input_ids': inputs['input_ids'].squeeze(), # tensor([[101, 2769, 4638, 102, 0]])，每个token在词表中的编号.这里的 .squeeze() 用来去掉 tokenizer 添加的大小为1的批次维度：
+            'attention_mask': inputs['attention_mask'].squeeze(), # 1 表示真实 token，0 表示补齐的 padding。
+            'labels': torch.tensor(label) # 类别标签
+        }
+
+def testing(df:pd.DataFrame,rs=42, device='cuda:0'):
+    '''
+    测试函数
+    '''
+    trained_model_dir = os.path.join(exp_data_dir,"trained_models",f"ft_model_{rs}")
+    # 加载回来tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(trained_model_dir, use_fast=True)
+    # 加载回model
+    model = AutoModelForSequenceClassification.from_pretrained(trained_model_dir) 
+    model.to(device)
+
+    X_test, y_test = list(df["Text"]), list(df["LabelNum"])
+    print(f"测试集大小:{len(X_test)}")
+    # 测试集加载器
+    test_loader = DataLoader(TextDataset(X_test, y_test, tokenizer), batch_size=32, shuffle=False)
+
+    # 模型进入评估模式
+    model.eval()
+    
+    p_labels = [] # 预测 class idx list
+    gt_labels = [] # 真值class idx list
+    # probs = []
+    with torch.no_grad():
+        for batch in test_loader:
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels = batch['labels'].to(device)
+
+            outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
+            logits = outputs.logits
+            preds = torch.argmax(logits, dim=-1) # 预测class idx
+            # probs = torch.softmax(outputs.logits, dim=-1) # logits -> probs
+
+            p_labels.extend(preds.cpu().numpy()) 
+            gt_labels.extend(labels.cpu().numpy())
+            # probs.extend(probs.max(dim=-1).values.cpu().numpy())
+    # 统计指标
+    res = classification_report(gt_labels, p_labels,output_dict=True)
+    # 返回统计指标
+    return res
+
+def sobert():
+    save_dir = os.path.join(exp_data_dir,"sobert_res")
+    os.makedirs(save_dir,exist_ok=True)
+    save_file_name = "res.joblib"
+    save_path = os.path.join(save_dir,save_file_name)
+    test_df = pd.read_csv(test_csv_path)
+    all_res = {}
+    for rs in range(42,42+15):
+        res = testing(test_df,rs=42, device='cuda:1')
+        all_res[rs] = res
+    joblib.dump(all_res,save_path)
+    print(f"sobert实验指标保存在:{save_path}")
+
+
+def main():
+    sobert()
+
+if __name__ == "__main__":
+    exp_data_dir = "/data/mml/DL_bug_classification"
+    test_csv_path = "reconstruct_dataset/test_dataset.csv"
+    main()
