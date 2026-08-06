@@ -50,11 +50,10 @@ class TextDataset(Dataset):
             'labels': torch.tensor(label) # 类别标签
         }
 
-def testing(df:pd.DataFrame,rs=42, device='cuda:0'):
+def testing(trained_model_dir:str,df:pd.DataFrame,rs=42, device='cuda:0'):
     '''
     测试函数
     '''
-    trained_model_dir = os.path.join(exp_data_dir,"trained_models",f"ft_model_{rs}")
     # 加载回来tokenizer
     tokenizer = AutoTokenizer.from_pretrained(trained_model_dir, use_fast=True)
     # 加载回model
@@ -105,7 +104,8 @@ def eval_model(model_name:str,device:str):
     all_res = {}
     for rs in range(42,42+15):
         print(f"随机数种子:{rs}")
-        res = testing(test_df,rs=42, device=device)
+        trained_model_dir = os.path.join(exp_data_dir,"trained_models",model_name,f"ft_model_{rs}")
+        res = testing(trained_model_dir,test_df,rs=42, device=device)
         all_res[rs] = res
     joblib.dump(all_res,save_path)
     print(f"{model_name}实验指标保存在:{save_path}")
@@ -131,6 +131,32 @@ def eval_tfidf_and_word2vec(method_name):
     joblib.dump(all_res,save_path)
     print(f"{method_name}实验指标保存在:{save_path}")
 
+
+
+def convert_llmlabelname2labelname(llm_labelname_list):
+    res = []
+    llm_labelname2labelname = {
+        "Model":"model",
+        "Tensors&Inputs":"tensor",
+        "Training":"training",
+        "GPU Usage":"gpu",
+        "API":"api",
+        "Others":"Others"
+    }
+    for llm_labelname in llm_labelname_list:
+        labelname = llm_labelname2labelname[llm_labelname]
+        res.append(labelname)
+    assert len(res) == len(llm_labelname_list), "llmName转换出错"
+    return res
+
+def convert_labelname2labelnum(labelname_list, labelname_to_labelnum:dict):
+    res = []
+    for labelname in labelname_list:
+        labelnum = labelname_to_labelnum[labelname]
+        res.append(labelnum)
+    assert len(res) == len(labelname_list), "nametonum转换出错"
+    return res
+
 def eval_llm(llm_name:str):
     '''
     llm_name:claude|chatgpt
@@ -141,22 +167,34 @@ def eval_llm(llm_name:str):
     save_file_name = "res.joblib"
     save_path = os.path.join(save_dir,save_file_name)
     all_res = {}
+
+    labelname_to_labelnum = {}
+    test_df = pd.read_csv(test_csv_path)
+    for row_id,row in test_df.iterrows():
+        labelname_to_labelnum[row["Label"]] = row["LabelNum"]
+
     for repeat in range(1,16):
         print(f"重复id:{repeat}")
         all_res[repeat] = {}
         llm_df = pd.read_csv(os.path.join(exp_data_dir,f"{llm_name}_res",f"repeat_{repeat}",f"{llm_name}.csv"))
-        gt_labels = list(llm_df["True"])
-        p_labels = list(llm_df["Pred"])
-        llm_res = classification_report(gt_labels, p_labels,output_dict=True)
+        gt_labelnames = list(llm_df["Label"])
+        llm_labelnames = list(llm_df["Answer"])
+        gt_labels = convert_labelname2labelnum(gt_labelnames,labelname_to_labelnum)
+        p_labels = convert_labelname2labelnum(convert_llmlabelname2labelname(llm_labelnames),labelname_to_labelnum)
+        assert len(gt_labels) == len(p_labels), "label转换出错了"
+        llm_res = classification_report(gt_labels,p_labels,output_dict=True)
         all_res[repeat] = llm_res
     joblib.dump(all_res,save_path)
     print(f"{llm_name}实验指标保存在:{save_path}")
 
+
+ 
+
 def main():
     # device = "cuda:0"
-    # eval_model("sobert") # sobert|codebert|robert
-    # eval_tfidf_and_word2vec("tfidf")
-    eval_llm("claude")
+    # eval_model("robert", device) # sobert|codebert|robert
+    # eval_tfidf_and_word2vec("word2vec") # tfidf|word2vec
+    eval_llm("claude") # chatgpt|claude
 if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
     test_csv_path = "reconstruct_dataset/test_dataset.csv"
