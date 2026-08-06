@@ -5,12 +5,11 @@ import anthropic
 import openai
 import pandas as pd
 from openai import OpenAI
-from sklearn.model_selection import train_test_split
 
 
 REQUEST_TIMEOUT = 30 # 单条最大请求时间
 MAX_ATTEMPTS = 2 # 单条最多重试步骤
-REQUEST_INTERVAL = 3.0 # 请求间隔
+REQUEST_INTERVAL = 3.0 # 请求间隔5s
 RETRY_ROUND_INTERVAL = 10.0  # 一轮失败任务结束后，等待再重试
 MAX_RETRY_ROUNDS = 10  # 失败 ID 最多处理10轮，避免无限循环
 
@@ -53,9 +52,9 @@ def create_client(llm_name):
 def query_chatgpt(client:OpenAI, content):
     """使用已创建的 OpenAI client 完成一次独立推理。"""
     response = client.chat.completions.create(
-        model="gpt-5.6-sol", # gpt-5.6-sol
+        model="gpt-5.6-sol",
         messages=[{"role": "user", "content": content}],
-        temperature=temperature
+        temperature=temperature,
         # logprobs=True
     )
     return response.choices[0].message.content or ""
@@ -67,7 +66,7 @@ def query_claude(client:anthropic.Anthropic, content):
         model="claude-opus-4-6",
         messages=[{"role": "user", "content": content}],
         max_tokens=1000,
-        temperature=temperature,
+        temperature=0.2,
     )
     return response.content[0].text or ""
 
@@ -235,42 +234,16 @@ def chat(df, llm_name, exp_data_dir,repeat):
     print(f"结果保存在:{csv_save_path}")
     return result_df
 
-def build_testset(dataset_split_method:str, rs:int) -> pd.DataFrame:
-    """
-    按照 mmltrain.py 的 dataset_split_method 构建 test set。
-    LLM 只对这里返回的 test set 做推理。
-    """
-    if dataset_split_method == "time":
-        return pd.read_csv("reconstruct_dataset/test_dataset.csv").reset_index(drop=True)
-
-    if dataset_split_method == "random":
-        df = pd.read_csv("dataset.csv")
-        test_size = int(df.shape[0] * 0.15)
-        _, test_df = train_test_split(
-            df,
-            test_size=test_size,
-            stratify=df["LabelNum"],
-            random_state=int(rs),
-        )
-        return test_df.reset_index(drop=True)
-
-    raise ValueError("dataset_split_method 只能是 random 或 time")
 
 def main():
     print(f"当前进程 PID: {os.getpid()}")
     repeat_num = 15
     start_time = time.monotonic()
-    exp_data_dir = "/data/mml/DL_bug_classification/xwj_reproduction"
-    dataset_split_method = "random"  # random|time
-    llm_name = "chatgpt"  # chatgpt|claude
+    exp_data_dir = "/data/mml/DL_bug_classification/xw"
+    llm_name = "claude"  # chatgpt|claude
+    test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
     for repeat in range(1,1+repeat_num):
-        rs = 42 + repeat - 1
-        test_df = build_testset(dataset_split_method, rs)
-        print(
-            f"=== 实验重复:{repeat}, "
-            f"dataset_split_method:{dataset_split_method}, "
-            f"rs:{rs}, testset大小:{len(test_df)} ==="
-        )
+        print(f"=== 实验重复:{repeat} ===")
         try:
             chat(test_df, llm_name, exp_data_dir,repeat)
         finally:
@@ -284,5 +257,5 @@ def main():
             )
 
 if __name__ == "__main__":
-    temperature =0.0
+    temperature = 0.0
     main()

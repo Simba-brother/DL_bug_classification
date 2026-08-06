@@ -72,29 +72,48 @@ def evaluate(model, val_loader, device):
     f1 = f1_score(val_labels, val_preds, average='macro')
     return accuracy, np.mean(losses), f1
 
-def train(model_path,save_dir,rs=42, device='cuda:0'):
+
+def build_dataloader(dataset_split_method:str,rs:int):
+    if dataset_split_method == "time":
+        trainval_df = pd.read_csv("reconstruct_dataset/trainval_dataset.csv")
+        test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
+        num_labels = trainval_df["LabelNum"].nunique() # 应该是6(5个DL bug,1个no DL bug)
+        # 从trainval中划分出，train和val
+        val_size = int(0.1 * trainval_df.shape[0])
+        X_train, X_val, y_train, y_val = train_test_split(list(trainval_df['Text']), 
+                                                        list(trainval_df['LabelNum']), 
+                                                        test_size=val_size, 
+                                                        stratify=trainval_df['LabelNum'], 
+                                                        random_state=int(rs))
+        # test_df中构建出X_test,y_test
+        X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
+        return X_train,y_train,X_val,y_val,X_test,y_test,num_labels
+    elif dataset_split_method == 'random':
+        df = pd.read_csv("dataset.csv")
+        num_labels = df["LabelNum"].nunique() # 应该是6(5个DL bug,1个no DL bug)
+        test_size = int(df.shape[0] * 0.15)
+        val_size = int(df.shape[0] * 0.15)
+        # 划分出75个测试集，剩下的都是训练集
+        X_train, X_test, y_train, y_test = train_test_split(list(df['Text']), list(df['LabelNum']), test_size=test_size, stratify=df['LabelNum'], random_state=int(rs))
+        # 训练集中再划分出val
+        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=val_size, stratify=y_train, random_state=int(rs))
+        return X_train,y_train,X_val,y_val,X_test,y_test,num_labels
+
+
+
+def train(model_path,save_dir,rs,device,dataset_split_method):
+    '''
+    device:"cuda:1"
+    dataset_split_method:"random"|"time"
+    '''
     # 数据集
-    trainval_df = pd.read_csv("reconstruct_dataset/trainval_dataset.csv")
-    test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
-    num_labels = trainval_df["LabelNum"].nunique() # 应该是6(5个DL bug,1个no DL bug)
-    
-    s_time=time.time()
+    X_train,y_train,X_val,y_val,X_test,y_test,num_labels = build_dataloader(dataset_split_method=dataset_split_method,rs=rs)
+    print(f"训练集大小:{len(X_train)},验证集大小:{len(X_val)},测试集大小:{len(X_test)}")
+
     # tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
     # 预训练分类模型
     model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels)
-    
-    # 从trainval中划分出，train和val
-    val_size = int(0.1 * trainval_df.shape[0])
-    X_train, X_val, y_train, y_val = train_test_split(list(trainval_df['Text']), 
-                                                      list(trainval_df['LabelNum']), 
-                                                      test_size=val_size, 
-                                                      stratify=trainval_df['LabelNum'], 
-                                                      random_state=int(rs))
-    # test_df中构建出X_test,y_test
-    X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
-
-    print(f"训练集大小:{len(X_train)},验证集大小:{len(X_val)},测试集大小:{len(X_test)}")
 
     # 训练集加载器
     train_loader = DataLoader(TextDataset(X_train, y_train, tokenizer),batch_size=32, shuffle=True)
@@ -102,6 +121,7 @@ def train(model_path,save_dir,rs=42, device='cuda:0'):
     val_loader = DataLoader(TextDataset(X_val, y_val, tokenizer), batch_size=32)
     # 测试集加载器
     test_loader = DataLoader(TextDataset(X_test, y_test, tokenizer), batch_size=32)
+
 
     # 模型参数优化器
     optimizer = AdamW(model.parameters(), lr=4e-6)
@@ -121,6 +141,7 @@ def train(model_path,save_dir,rs=42, device='cuda:0'):
             "TestAcc":0.0,
             "TestLoss":0.0
     }
+    s_time=time.time()
     for epoch in range(num_epochs):
         epoch_start_time = time.time()
         model.train() # The model enters training mode.
@@ -187,7 +208,10 @@ def train(model_path,save_dir,rs=42, device='cuda:0'):
     return best_info
 
 def main():
-    model_name = "robert" # sobert|codebert|robert
+    device = "cuda:3"
+    repeat_num = 15 # 重复实验次数
+    dataset_split_method = "random" # random|time
+    model_name = "sobert" # sobert|codebert|robert
     model_path = None
     if model_name == "sobert":
         model_path= "./model"
@@ -198,12 +222,11 @@ def main():
     else:
         raise Exception("model path 参数错误")
     testacc_res = defaultdict(float)
-    repeat_num = 15 # 重复实验次数
     save_dir = os.path.join(exp_data_dir,f"trained_models",model_name)
     os.makedirs(save_dir,exist_ok=True)
     for rs in range(42,42+repeat_num):
         print(f"随机种子:{rs}")
-        bestinfo = train(model_path,save_dir,rs=rs,device='cuda:3')
+        bestinfo = train(model_path,save_dir,rs,device,dataset_split_method)
         test_acc = bestinfo["TestAcc"]
         testacc_res[rs] = test_acc
     # 保存testacc结果
@@ -212,7 +235,8 @@ def main():
     print(f"{repeat_num}次结果保存在:{save_file_path}")
 
 
-if __name__ == "__main__":
-    exp_data_dir = "/data/mml/DL_bug_classification"
-    main()
 
+
+if __name__ == "__main__":
+    exp_data_dir = "/data/mml/DL_bug_classification/xwj_reproduction"
+    main()
