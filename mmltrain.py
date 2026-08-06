@@ -73,7 +73,7 @@ def evaluate(model, val_loader, device):
     return accuracy, np.mean(losses), f1
 
 
-def build_dataloader(dataset_split_method:str,rs:int):
+def build_dataset(dataset_split_method:str,rs:int):
     if dataset_split_method == "time":
         trainval_df = pd.read_csv("reconstruct_dataset/trainval_dataset.csv")
         test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
@@ -107,7 +107,7 @@ def train(model_path,save_dir,rs,device,dataset_split_method):
     dataset_split_method:"random"|"time"
     '''
     # 数据集
-    X_train,y_train,X_val,y_val,X_test,y_test,num_labels = build_dataloader(dataset_split_method=dataset_split_method,rs=rs)
+    X_train,y_train,X_val,y_val,X_test,y_test,num_labels = build_dataset(dataset_split_method=dataset_split_method,rs=rs)
     print(f"训练集大小:{len(X_train)},验证集大小:{len(X_val)},测试集大小:{len(X_test)}")
 
     # tokenizer
@@ -208,10 +208,10 @@ def train(model_path,save_dir,rs,device,dataset_split_method):
     return best_info
 
 def main():
-    device = "cuda:3"
+    device = "cuda:4"
     repeat_num = 15 # 重复实验次数
     dataset_split_method = "random" # random|time
-    model_name = "sobert" # sobert|codebert|robert
+    model_name = "robert" # sobert|codebert|robert
     model_path = None
     if model_name == "sobert":
         model_path= "./model"

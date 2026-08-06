@@ -54,6 +54,50 @@ def tfidf_embedding(tokenized_texts, vectorizer, fit=False):
     return vectorizer.transform(sentences)
 
 
+def build_dataset_split(dataset_split_method, rs):
+    """
+    按照 mmltrain.py 的 dataset_split_method 构建 train/val/test。
+    dataset_split_method: random|time
+    """
+    if dataset_split_method == "time":
+        trainval_df = pd.read_csv("reconstruct_dataset/trainval_dataset.csv")
+        test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
+
+        val_size = int(0.1 * trainval_df.shape[0])
+        X_train, X_val, y_train, y_val = train_test_split(
+            list(trainval_df["Text"]),
+            list(trainval_df["LabelNum"]),
+            test_size=val_size,
+            stratify=trainval_df["LabelNum"],
+            random_state=int(rs),
+        )
+        X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
+        return X_train, y_train, X_val, y_val, X_test, y_test
+
+    if dataset_split_method == "random":
+        df = pd.read_csv("dataset.csv")
+        test_size = int(df.shape[0] * 0.15)
+        val_size = int(df.shape[0] * 0.15)
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            list(df["Text"]),
+            list(df["LabelNum"]),
+            test_size=test_size,
+            stratify=df["LabelNum"],
+            random_state=int(rs),
+        )
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_train,
+            y_train,
+            test_size=val_size,
+            stratify=y_train,
+            random_state=int(rs),
+        )
+        return X_train, y_train, X_val, y_val, X_test, y_test
+
+    raise ValueError("dataset_split_method 只能是 random 或 time")
+
+
 
 def train_pred(train_vector, val_vector, test_vector, y_train, y_val, y_test):
     clf_random_states = [42, 43, 44]
@@ -112,18 +156,16 @@ def train_pred(train_vector, val_vector, test_vector, y_train, y_val, y_test):
 
     return result_dfs
 
-def baseline_method(trainval_df,test_df,rs,baseline_name):
+def baseline_method(rs, baseline_name, dataset_split_method):
     '''
     rs:训练集验证集切分随机数
     baseline_name:word2vec|tfidf
+    dataset_split_method:random|time
     '''
-    
-    # 从trainval中划分出，train和val
-    val_size = int(0.1 * trainval_df.shape[0])
-    X_train, X_val, y_train, y_val = train_test_split(list(trainval_df['Text']), list(trainval_df['LabelNum']), 
-                                                      test_size=val_size, stratify=trainval_df['LabelNum'], random_state=rs)
-    # test_df中构建出X_test,y_test
-    X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
+    X_train, y_train, X_val, y_val, X_test, y_test = build_dataset_split(
+        dataset_split_method,
+        rs,
+    )
 
     print(f"训练集大小:{len(X_train)},验证集大小:{len(X_val)}, 测试集大小:{len(X_test)}")
     train_tokens = tokenize_texts(X_train)
@@ -173,12 +215,14 @@ def baseline_method(trainval_df,test_df,rs,baseline_name):
 
 def main():
     s_time=time.time()
-    method_name = "tfidf" # word2vec|tfidf
+    method_name = "word2vec" # word2vec|tfidf
+    dataset_split_method = "random" # random|time
     print(f"基线名称:{method_name}")
+    print(f"数据集切分方式:{dataset_split_method}")
     repeat_num = 15 # 重复实验次数
     for rs in range(42,42+repeat_num):
         print(f"随机种子:{rs}")
-        baseline_method(trainval_df,test_df,rs,method_name)
+        baseline_method(rs, method_name, dataset_split_method)
     e_time=time.time()
     elapsed_time = int(e_time - s_time)
     hours, remainder = divmod(elapsed_time, 3600)
@@ -187,10 +231,5 @@ def main():
 
 
 if __name__ == "__main__":
-    exp_data_dir = "/data/mml/DL_bug_classification"
-    # 数据集(测试集划分出来)
-    trainval_df = pd.read_csv("reconstruct_dataset/trainval_dataset.csv")
-    test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
-    # 类别数
-    num_labels = trainval_df["LabelNum"].nunique() # 应该是6(5个DL bug,1个no DL bug)
+    exp_data_dir = "/data/mml/DL_bug_classification/xwj_reproduction"
     main()

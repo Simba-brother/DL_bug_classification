@@ -50,6 +50,28 @@ class TextDataset(Dataset):
             'labels': torch.tensor(label) # 类别标签
         }
 
+def build_test_df(dataset_split_method:str, rs:int) -> pd.DataFrame:
+    """
+    按照 mmltrain.py 的 dataset_split_method 构建 test set。
+    eval_model 只在这里返回的 X_test/y_test 上生成预测 CSV。
+    """
+    if dataset_split_method == "time":
+        return pd.read_csv("reconstruct_dataset/test_dataset.csv").reset_index(drop=True)
+
+    if dataset_split_method == "random":
+        df = pd.read_csv("dataset.csv")
+        test_size = int(df.shape[0] * 0.15)
+        _, test_df = train_test_split(
+            df,
+            test_size=test_size,
+            stratify=df["LabelNum"],
+            random_state=int(rs),
+        )
+        return test_df.reset_index(drop=True)
+
+    raise ValueError("dataset_split_method 只能是 random 或 time")
+
+
 def testing(trained_model_dir:str,df:pd.DataFrame,rs=42, device='cuda:0'):
     '''
     测试函数
@@ -70,7 +92,7 @@ def testing(trained_model_dir:str,df:pd.DataFrame,rs=42, device='cuda:0'):
     
     p_labels = [] # 预测 class idx list
     gt_labels = [] # 真值class idx list
-    # probs = []
+    probs = []
     with torch.no_grad():
         for batch in test_loader:
             input_ids = batch['input_ids'].to(device)
@@ -80,33 +102,48 @@ def testing(trained_model_dir:str,df:pd.DataFrame,rs=42, device='cuda:0'):
             outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
             logits = outputs.logits
             preds = torch.argmax(logits, dim=-1) # 预测class idx
-            # probs = torch.softmax(outputs.logits, dim=-1) # logits -> probs
+            batch_probs = torch.softmax(logits, dim=-1) # logits -> probs
 
             p_labels.extend(preds.cpu().numpy()) 
             gt_labels.extend(labels.cpu().numpy())
-            # probs.extend(probs.max(dim=-1).values.cpu().numpy())
+            probs.extend(batch_probs.cpu().numpy().tolist())
     # 统计指标
     res = classification_report(gt_labels, p_labels,output_dict=True)
+    predict_df = pd.DataFrame({
+        "True": gt_labels,
+        "Pred": p_labels,
+        "Probs": probs,
+    })
+    if "Id" in df.columns:
+        predict_df.insert(0, "Id", list(df["Id"]))
     # 返回统计指标
-    return res
+    return res, predict_df
 
-def eval_model(model_name:str,device:str):
+def eval_bert(model_name:str,device:str,dataset_split_method:str):
     '''
     model_name:sobert|codebert|robert
     device:'cuda:0'
+    dataset_split_method:random|time
     '''
     assert model_name in ["sobert","codebert","robert"], "model_name 传参错误"
     save_dir = os.path.join(exp_data_dir,f"{model_name}_res")
     os.makedirs(save_dir,exist_ok=True)
     save_file_name = "res.joblib"
     save_path = os.path.join(save_dir,save_file_name)
-    test_df = pd.read_csv(test_csv_path)
     all_res = {}
     for rs in range(42,42+15):
         print(f"随机数种子:{rs}")
+        test_df = build_test_df(dataset_split_method, rs)
         trained_model_dir = os.path.join(exp_data_dir,"trained_models",model_name,f"ft_model_{rs}")
-        res = testing(trained_model_dir,test_df,rs=42, device=device)
+        res, predict_df = testing(trained_model_dir,test_df,rs=rs, device=device)
         all_res[rs] = res
+
+        predict_save_dir = os.path.join(save_dir, f"seed_{rs}")
+        os.makedirs(predict_save_dir, exist_ok=True)
+        predict_save_path = os.path.join(predict_save_dir, f"{model_name}.csv")
+        predict_df.to_csv(predict_save_path, index=False)
+        print(f"{model_name} seed {rs} 测试集预测结果保存在:{predict_save_path}")
+
     joblib.dump(all_res,save_path)
     print(f"{model_name}实验指标保存在:{save_path}")
 
@@ -130,8 +167,6 @@ def eval_tfidf_and_word2vec(method_name):
             all_res[rs][cls_name] = cls_res
     joblib.dump(all_res,save_path)
     print(f"{method_name}实验指标保存在:{save_path}")
-
-
 
 def convert_llmlabelname2labelname(llm_labelname_list):
     res = []
@@ -169,7 +204,7 @@ def eval_llm(llm_name:str):
     all_res = {}
 
     labelname_to_labelnum = {}
-    test_df = pd.read_csv(test_csv_path)
+    test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
     for row_id,row in test_df.iterrows():
         labelname_to_labelnum[row["Label"]] = row["LabelNum"]
 
@@ -192,10 +227,12 @@ def eval_llm(llm_name:str):
 
 def main():
     # device = "cuda:0"
-    # eval_model("robert", device) # sobert|codebert|robert
-    # eval_tfidf_and_word2vec("word2vec") # tfidf|word2vec
-    eval_llm("claude") # chatgpt|claude
+    # bertname = "sobert" # sobert|codebert|robert
+    # dataset_split_method = "random" # random|time
+    # eval_bert(bertname, device, dataset_split_method)
+    # eval_tfidf_and_word2vec("tfidf") # tfidf|word2vec
+    # eval_llm("claude") # chatgpt|claude
+    pass
 if __name__ == "__main__":
-    exp_data_dir = "/data/mml/DL_bug_classification"
-    test_csv_path = "reconstruct_dataset/test_dataset.csv"
+    exp_data_dir = "/data/mml/DL_bug_classification/xwj_reproduction"
     main()

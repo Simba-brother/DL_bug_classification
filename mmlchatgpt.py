@@ -262,7 +262,7 @@ def main():
     start_time = time.monotonic()
     exp_data_dir = "/data/mml/DL_bug_classification/xwj_reproduction"
     dataset_split_method = "random"  # random|time
-    llm_name = "chatgpt"  # chatgpt|claude
+    llm_name = "claude"  # chatgpt|claude
     for repeat in range(1,1+repeat_num):
         rs = 42 + repeat - 1
         test_df = build_testset(dataset_split_method, rs)

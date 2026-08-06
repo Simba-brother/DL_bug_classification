@@ -21,7 +21,7 @@ def load_res(method_name:str) -> dict:
 
 
 def get_class_id2name() -> dict[int, str]:
-    test_df = pd.read_csv(test_csv_path)
+    test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
     return dict(
         test_df[["LabelNum", "Label"]]
         .drop_duplicates()
@@ -89,20 +89,19 @@ def build_result_df(method_names:list[str]) -> pd.DataFrame:
 def main():
     method_names = [
         "sobert",
-        "codebert",
-        "robert",
-        "chatgpt",
-        "claude",
+        # "codebert",
+        # "robert",
+        # "chatgpt",
+        # "claude",
         "tfidf",
-        "word2vec",
+        # "word2vec",
     ]
     df = build_result_df(method_names)
     df = df.round(3)
     df.index.name = "row_name"
-    df.to_csv("result.csv", index=True)
+    df.to_csv("result_xwj_reproduction.csv", index=True)
 
 
 if __name__ == "__main__":
-    exp_root_dir = "/data/mml/DL_bug_classification/"
-    test_csv_path = "reconstruct_dataset/test_dataset.csv"
+    exp_root_dir = "/data/mml/DL_bug_classification/xwj_reproduction"
     main()
