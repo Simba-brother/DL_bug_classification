@@ -67,7 +67,7 @@ def build_result_row(reports:list[dict], class_id2name:dict[int, str]) -> dict[s
 
     for class_id, class_name in class_id2name.items():
         class_key = str(class_id)
-        row[f"{class_name}_acc"] = mean_metric(reports, [class_key, "precision"])
+        row[f"{class_name}_acc"] = mean_metric(reports, [class_key, "accuracy"]) # precision
         row[f"{class_name}_f1"] = mean_metric(reports, [class_key, "f1-score"])
 
     return row
@@ -91,10 +91,10 @@ def main():
         "sobert",
         # "codebert",
         # "robert",
-        # "chatgpt",
-        # "claude",
+        "chatgpt",
+        "claude",
         "tfidf",
-        # "word2vec",
+        "word2vec"
     ]
     df = build_result_df(method_names)
     df = df.round(3)
