@@ -1,7 +1,5 @@
 You have been assigned the task of zero-shot text classification for posts on Stack Overflow. Your objective is to classify a given text snippet into one of several possible class labels, based on the category of deep learning bugs discussed in the text snippet.
 
-Output exactly one integer class id and no other characters.
-
 Text: <Text>
 
 Labels:
@@ -13,4 +11,9 @@ Labels:
 5=Others
 
 If the text does not describe a deep learning bug, output 5.
+
+Return exactly one JSON object and no other text.
+JSON schema:
+{"Answer":"<one of: 0, 1, 2, 3, 4, 5>","Confidence":<number between 0 and 1>}
+Confidence is your self-estimated probability that Answer is correct.
 Answer:

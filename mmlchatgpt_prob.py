@@ -1,6 +1,5 @@
 import os
 import json
-import math
 import re
 import time
 
@@ -11,11 +10,11 @@ from openai import OpenAI
 from sklearn.model_selection import train_test_split
 
 
-REQUEST_TIMEOUT = 30 # 单条最大请求时间
+REQUEST_TIMEOUT = 10 # 单条最大请求时间
 MAX_ATTEMPTS = 2 # 单条最多重试步骤
 REQUEST_INTERVAL = 3.0 # 请求间隔
 RETRY_ROUND_INTERVAL = 10.0  # 一轮失败任务结束后，等待再重试
-MAX_RETRY_ROUNDS = 10  # 失败 ID 最多处理10轮，避免无限循环
+MAX_RETRY_ROUNDS = 20  # 失败 ID 最多处理10轮，避免无限循环
 LABEL_ID_TO_NAME = {
     "0": "Model",
     "1": "Tensors&Inputs",
@@ -24,78 +23,67 @@ LABEL_ID_TO_NAME = {
     "4": "API",
     "5": "Others",
 }
-PROB_COLUMNS = [f"prob_{label_id}" for label_id in LABEL_ID_TO_NAME]
 
 
-def build_prob_query(prompt_template, text):
-    """构建只输出 0..5 的单 token 分类提示。"""
+class InvalidModelResponseError(ValueError):
+    """模型输出不满足 Answer/Confidence 约束。"""
+
+
+def build_confidence_query(prompt_template, text):
+    """构建自评置信度分类提示。"""
     return prompt_template.replace("<Text>", text).strip()
 
 
-def build_claude_confidence_query(prompt_template, text):
-    """构建 Claude 自评置信度提示。"""
-    query = prompt_template.replace("<Text>", text).strip()
-    query = re.sub(r"\n?Answer:\s*$", "", query)
-    return f"""{query}
-
-Return exactly one JSON object and no other text.
-JSON schema:
-{{"Answer":"<one of: 0, 1, 2, 3, 4, 5>","Confidence":<number between 0 and 1>}}
-Confidence is your self-estimated probability that Answer is correct.
-Answer:"""
-
-
 def normalize_label_id(token):
+    if token is None:
+        return None
+
     label_id = str(token).strip()
     if label_id in LABEL_ID_TO_NAME:
         return label_id
 
-    match = re.search(r"[0-5]", label_id)
+    match = re.search(r"(?<!\d)[0-5](?!\d)", label_id)
     if match:
         return match.group(0)
     return None
 
 
-def build_empty_label_probs():
-    return {prob_col: "" for prob_col in PROB_COLUMNS}
-
-
-def build_empty_response_data(llm_name):
-    response_data = {
+def build_empty_response_data():
+    return {
         "raw_response": "",
         "AnswerId": "",
         "Answer": "",
+        "Confidence": "",
     }
-    if llm_name == "chatgpt":
-        response_data.update(build_empty_label_probs())
-    else:
-        response_data["Confidence"] = ""
-    return response_data
 
 
 def normalize_confidence(confidence):
     if confidence is None or confidence == "":
         return ""
     try:
-        confidence_text = str(confidence).strip().rstrip("%")
+        confidence_text = str(confidence).strip()
+        if confidence_text.endswith("%"):
+            return ""
         confidence_value = float(confidence_text)
     except ValueError:
         return ""
-    if confidence_value > 1 and confidence_value <= 100:
-        confidence_value = confidence_value / 100
     if confidence_value < 0 or confidence_value > 1:
         return ""
     return confidence_value
 
 
-def parse_claude_answer_and_confidence(response):
+def parse_answer_and_confidence(response):
     text = response.strip()
     json_match = re.search(r"\{.*\}", text, flags=re.DOTALL)
     if json_match:
         try:
             data = json.loads(json_match.group(0))
-            answer_id = normalize_label_id(data.get("Answer") or data.get("answer"))
-            confidence = normalize_confidence(data.get("Confidence") or data.get("confidence"))
+            answer_value = data["Answer"] if "Answer" in data else data.get("answer")
+            confidence_value = (
+                data["Confidence"] if "Confidence" in data else data.get("confidence")
+            )
+            answer_id = normalize_label_id(answer_value)
+            confidence = normalize_confidence(confidence_value)
             return answer_id or "", confidence
         except json.JSONDecodeError:
             pass
@@ -110,42 +98,23 @@ def parse_claude_answer_and_confidence(response):
     return answer_id, confidence
 
 
-def extract_label_probs(choice):
-    """从首个输出 token 的 top_logprobs 中提取 0..5 的类别概率。"""
-    probs = {prob_col: 0.0 for prob_col in PROB_COLUMNS}
-    # answer_id in [0-5]
-    answer_id = normalize_label_id(choice.message.content or "")
-
-    if not choice.logprobs or not choice.logprobs.content:
-        raise RuntimeError("OpenAI response 中没有 logprobs.content")
-
-    first_token_logprob = choice.logprobs.content[0]
-    generated_label_id = normalize_label_id(first_token_logprob.token)
-    if answer_id is None:
-        answer_id = generated_label_id
-
-    top_logprobs = first_token_logprob.top_logprobs or []
-    for item in top_logprobs:
-        label_id = normalize_label_id(item.token)
-        if label_id is None:
-            continue
-        probs[f"prob_{label_id}"] = max(probs[f"prob_{label_id}"], math.exp(item.logprob))
-
-    if generated_label_id is not None:
-        probs[f"prob_{generated_label_id}"] = max(
-            probs[f"prob_{generated_label_id}"],
-            math.exp(first_token_logprob.logprob),
+def build_response_data(raw_response):
+    answer_id, confidence = parse_answer_and_confidence(raw_response)
+    if answer_id not in LABEL_ID_TO_NAME:
+        raise InvalidModelResponseError(
+            f"AnswerId 不是 0-5, raw_response={raw_response!r}"
+        )
+    if confidence == "":
+        raise InvalidModelResponseError(
+            f"Confidence 不是 0-1, raw_response={raw_response!r}"
         )
 
-    prob_sum = sum(probs.values())
-    if prob_sum > 0:
-        probs = {prob_col: prob_value / prob_sum for prob_col, prob_value in probs.items()}
-
-    if answer_id is None and prob_sum > 0:
-        answer_id = max(LABEL_ID_TO_NAME, key=lambda label_id: probs[f"prob_{label_id}"])
-
-    answer = LABEL_ID_TO_NAME.get(answer_id, "")
-    return answer_id or "", answer, probs
+    return {
+        "raw_response": raw_response,
+        "AnswerId": answer_id,
+        "Answer": LABEL_ID_TO_NAME[answer_id],
+        "Confidence": confidence,
+    }
 
 
 def create_client(llm_name):
@@ -185,45 +154,31 @@ def create_client(llm_name):
 
 def query_chatgpt(client:OpenAI, content):
     """使用已创建的 OpenAI client 完成一次独立推理。"""
+    gpt_name = "gpt-5.6-sol" # gpt-5.6-sol|gpt-5.5
+    print(f"ChatGPT model name:{gpt_name}")
     response = client.chat.completions.create(
-        model="gpt-5.6-sol", # gpt-5.6-sol
+        model=gpt_name,
         messages=[{"role": "user", "content": content}],
         temperature=0,
-        logprobs=True,
-        top_logprobs=6, # 6个分类
-        max_completion_tokens=1,
+        max_completion_tokens=100,
     )
     choice = response.choices[0]
-    print("finish_reason:", choice.finish_reason, flush=True)
-    print("content:", repr(choice.message.content), flush=True)
-    print("logprobs:", choice.logprobs, flush=True)
-    print("usage:", response.usage, flush=True)
-
-    answer_id, answer, probs = extract_label_probs(choice)
-    return {
-        "raw_response": choice.message.content or "",
-        "AnswerId": answer_id,
-        "Answer": answer,
-        **probs,
-    }
+    raw_response = choice.message.content or ""
+    return build_response_data(raw_response)
 
 
 def query_claude(client:anthropic.Anthropic, content):
     """使用已创建的 Anthropic client 完成一次独立推理。"""
+    claude_name = "claude-opus-4-7" # claude-opus-4-7|claude-opus-4-6
+    print(f"Claude model name:{claude_name}")
     response = client.messages.create(
-        model="claude-opus-4-6",
+        model=claude_name,
         messages=[{"role": "user", "content": content}],
         max_tokens=100,
         temperature=0,
     )
     raw_response = response.content[0].text or ""
-    answer_id, confidence = parse_claude_answer_and_confidence(raw_response)
-    return {
-        "raw_response": raw_response,
-        "AnswerId": answer_id,
-        "Answer": LABEL_ID_TO_NAME.get(answer_id, ""),
-        "Confidence": confidence,
-    }
+    return build_response_data(raw_response)
 
 
 def is_retryable_error(error):
@@ -237,6 +192,7 @@ def is_retryable_error(error):
         anthropic.APIConnectionError,
         anthropic.RateLimitError,
         anthropic.InternalServerError,
+        InvalidModelResponseError,
     )
     return isinstance(error, retryable_errors)
 
@@ -270,9 +226,13 @@ def query_with_retry(client, query_model, query, sample_id):
 def chat(df, llm_name, exp_data_dir,repeat):
     """推理全部样本，并循环处理失败样本直到全部成功。"""
     client = create_client(llm_name)
-    query_model = query_chatgpt if llm_name == "chatgpt" else query_claude
-    if llm_name == "claude":
-        print("Claude Messages API 不返回 logprobs，CSV 将保存模型自评 Confidence。", flush=True)
+    if llm_name == "chatgpt":
+        query_model = query_chatgpt
+    elif llm_name == "claude":
+        query_model = query_claude
+    else:
+        raise ValueError("llm_name 只能是 chatgpt 或 claude")
+    print(f"{llm_name} CSV 将保存模型自评 Confidence。", flush=True)
 
     # 提示词模板和输出目录只初始化一次。
     with open("prompt_prob.txt", encoding="utf-8") as prompt_file:
@@ -299,10 +259,7 @@ def chat(df, llm_name, exp_data_dir,repeat):
             failed_rows = [] # 准备存储当前轮次还会失败的行
             for row in pending_rows:
                 sample_id = row.Id # post id
-                if llm_name == "chatgpt":
-                    query = build_prob_query(prompt_template, row.Text)
-                else:
-                    query = build_claude_confidence_query(prompt_template, row.Text)
+                query = build_confidence_query(prompt_template, row.Text)
                 response_data, run_time, error_message = query_with_retry(
                     client,
                     query_model,
@@ -332,7 +289,7 @@ def chat(df, llm_name, exp_data_dir,repeat):
                         encoding="utf-8",
                     ) as error_file:
                         error_file.write(error_message)
-                    response_data = build_empty_response_data(llm_name)
+                    response_data = build_empty_response_data()
 
                 with open(
                     os.path.join(time_dir, f"{sample_id}.txt"),
@@ -352,11 +309,8 @@ def chat(df, llm_name, exp_data_dir,repeat):
                     "Id": sample_id,
                     "True": true_label,
                     "pred": pred_label,
+                    "Confidence": response_data["Confidence"],
                 }
-                if llm_name == "chatgpt":
-                    result_row.update({prob_col: response_data[prob_col] for prob_col in PROB_COLUMNS})
-                else:
-                    result_row["Confidence"] = response_data["Confidence"]
                 result_row.update({
                     "Time": run_time,
                     "Status": status,
@@ -424,7 +378,7 @@ def main():
     start_time = time.monotonic()
     exp_data_dir = os.path.join(exp_root_dir,"xwj_reproduction")
     dataset_split_method = "random"  # random|time
-    llm_name = "chatgpt"  # chatgpt|claude
+    llm_name = "claude"  # chatgpt|claude
     for repeat in range(1,1+repeat_num):
         rs = 42 + repeat - 1
         test_df = build_testset(dataset_split_method, rs)

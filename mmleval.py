@@ -449,12 +449,12 @@ def eval_xwj_from_all_res():
         )
 
 def main():
-    # device = "cuda:4"
-    # bertname = "sobert" # sobert|codebert|robert
+    # device = "cuda:0"
+    # bertname = "robert" # sobert|codebert|robert
     # dataset_split_method = "random" # random|time
     # eval_bert(bertname, device, dataset_split_method)
 
-    # eval_tfidf_and_word2vec("word2vec") # tfidf|word2vec
+    eval_tfidf_and_word2vec("word2vec") # tfidf|word2vec
 
     # eval_llm("claude") # chatgpt|claude
 
