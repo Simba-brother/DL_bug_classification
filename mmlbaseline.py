@@ -1,5 +1,6 @@
 import sys
 import time
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import os
@@ -64,42 +65,46 @@ def build_dataset_split(dataset_split_method, rs):
         test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
 
         val_size = int(0.1 * trainval_df.shape[0])
-        X_train, X_val, y_train, y_val = train_test_split(
-            list(trainval_df["Text"]),
-            list(trainval_df["LabelNum"]),
+        train_df, val_df = train_test_split(
+            trainval_df,
             test_size=val_size,
             stratify=trainval_df["LabelNum"],
             random_state=int(rs),
         )
+        X_train, y_train = list(train_df["Text"]), list(train_df["LabelNum"])
+        X_val, y_val = list(val_df["Text"]), list(val_df["LabelNum"])
         X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
-        return X_train, y_train, X_val, y_val, X_test, y_test
+        test_ids = list(test_df["Id"])
+        return X_train, y_train, X_val, y_val, X_test, y_test, test_ids
 
     if dataset_split_method == "random":
         df = pd.read_csv("dataset.csv")
         test_size = int(df.shape[0] * 0.15)
         val_size = int(df.shape[0] * 0.15)
 
-        X_train, X_test, y_train, y_test = train_test_split(
-            list(df["Text"]),
-            list(df["LabelNum"]),
+        train_df, test_df = train_test_split(
+            df,
             test_size=test_size,
             stratify=df["LabelNum"],
             random_state=int(rs),
         )
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_train,
-            y_train,
+        train_df, val_df = train_test_split(
+            train_df,
             test_size=val_size,
-            stratify=y_train,
+            stratify=train_df["LabelNum"],
             random_state=int(rs),
         )
-        return X_train, y_train, X_val, y_val, X_test, y_test
+        X_train, y_train = list(train_df["Text"]), list(train_df["LabelNum"])
+        X_val, y_val = list(val_df["Text"]), list(val_df["LabelNum"])
+        X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
+        test_ids = list(test_df["Id"])
+        return X_train, y_train, X_val, y_val, X_test, y_test, test_ids
 
     raise ValueError("dataset_split_method 只能是 random 或 time")
 
 
 
-def train_pred(train_vector, val_vector, test_vector, y_train, y_val, y_test):
+def train_pred(train_vector, val_vector, test_vector, y_train, y_val, y_test, test_ids):
     clf_random_states = [42, 43, 44]
     knn_n_neighbors = [5,6,7]
     clf_candidates = {
@@ -135,7 +140,6 @@ def train_pred(train_vector, val_vector, test_vector, y_train, y_val, y_test):
         print(f'分类器名称:{clf_name}')
         best_clf = None
         best_loss = float('inf')
-
         for config, clf in candidates:
             clf.fit(train_vector, y_train)
             val_probs = clf.predict_proba(val_vector)
@@ -148,11 +152,18 @@ def train_pred(train_vector, val_vector, test_vector, y_train, y_val, y_test):
 
         y_pred = best_clf.predict(test_vector)
         probs = best_clf.predict_proba(test_vector)
-        result_dfs[clf_name] = pd.DataFrame({
+        probs_by_label = np.zeros((len(y_test), 6))
+        for prob_col_idx, label_num in enumerate(best_clf.classes_):
+            probs_by_label[:, int(label_num)] = probs[:, prob_col_idx]
+
+        result_df = pd.DataFrame({
+            'Id': test_ids,
             'True': y_test,
-            'Pred': y_pred,
-            'Probs': probs.tolist(),
+            'pred': y_pred
         })
+        for label_num in range(6):
+            result_df[f'prob_{label_num}'] = probs_by_label[:, label_num]
+        result_dfs[clf_name] = result_df
 
     return result_dfs
 
@@ -162,7 +173,7 @@ def baseline_method(rs, baseline_name, dataset_split_method):
     baseline_name:word2vec|tfidf
     dataset_split_method:random|time
     '''
-    X_train, y_train, X_val, y_val, X_test, y_test = build_dataset_split(
+    X_train, y_train, X_val, y_val, X_test, y_test, test_ids = build_dataset_split(
         dataset_split_method,
         rs,
     )
@@ -200,14 +211,15 @@ def baseline_method(rs, baseline_name, dataset_split_method):
         test_vector,
         y_train,
         y_val,
-        y_test
+        y_test,
+        test_ids
     )
 
     # 保存
     save_dir = os.path.join(exp_data_dir,f"trained_{baseline_name}",f"seed_{rs}")
     os.makedirs(save_dir,exist_ok=True)
-    for cls_name,df in result_dfs.items():
-        save_file_name = cls_name+".csv"
+    for clf_name,df in result_dfs.items():
+        save_file_name = clf_name+".csv"
         save_file_path = os.path.join(save_dir,save_file_name)
         df.to_csv(save_file_path,index=False)
     print(f"结果保存在:{save_dir}")
@@ -215,7 +227,7 @@ def baseline_method(rs, baseline_name, dataset_split_method):
 
 def main():
     s_time=time.time()
-    method_name = "word2vec" # word2vec|tfidf
+    method_name = "word2vec" # tfidf|word2vec
     dataset_split_method = "random" # random|time
     print(f"基线名称:{method_name}")
     print(f"数据集切分方式:{dataset_split_method}")
@@ -228,8 +240,11 @@ def main():
     hours, remainder = divmod(elapsed_time, 3600)
     minutes, seconds = divmod(remainder, 60)
     print(f"总耗时：{hours:02d}小时 {minutes:02d}分钟 {seconds:02d}秒")
+    print(f"当前时间:{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 
 if __name__ == "__main__":
+    pid = os.getpid()
+    print(f"pid:{pid}")
     exp_data_dir = "/data/mml/DL_bug_classification/xwj_reproduction"
     main()

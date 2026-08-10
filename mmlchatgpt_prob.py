@@ -1,4 +1,7 @@
 import os
+import json
+import math
+import re
 import time
 
 import anthropic
@@ -13,6 +16,136 @@ MAX_ATTEMPTS = 2 # 单条最多重试步骤
 REQUEST_INTERVAL = 3.0 # 请求间隔
 RETRY_ROUND_INTERVAL = 10.0  # 一轮失败任务结束后，等待再重试
 MAX_RETRY_ROUNDS = 10  # 失败 ID 最多处理10轮，避免无限循环
+LABEL_ID_TO_NAME = {
+    "0": "Model",
+    "1": "Tensors&Inputs",
+    "2": "Training",
+    "3": "GPU Usage",
+    "4": "API",
+    "5": "Others",
+}
+PROB_COLUMNS = [f"prob_{label_id}" for label_id in LABEL_ID_TO_NAME]
+
+
+def build_prob_query(prompt_template, text):
+    """构建只输出 0..5 的单 token 分类提示。"""
+    return prompt_template.replace("<Text>", text).strip()
+
+
+def build_claude_confidence_query(prompt_template, text):
+    """构建 Claude 自评置信度提示。"""
+    query = prompt_template.replace("<Text>", text).strip()
+    query = re.sub(r"\n?Answer:\s*$", "", query)
+    return f"""{query}
+
+Return exactly one JSON object and no other text.
+JSON schema:
+{{"Answer":"<one of: 0, 1, 2, 3, 4, 5>","Confidence":<number between 0 and 1>}}
+Confidence is your self-estimated probability that Answer is correct.
+Answer:"""
+
+
+def normalize_label_id(token):
+    label_id = str(token).strip()
+    if label_id in LABEL_ID_TO_NAME:
+        return label_id
+
+    match = re.search(r"[0-5]", label_id)
+    if match:
+        return match.group(0)
+    return None
+
+
+def build_empty_label_probs():
+    return {prob_col: "" for prob_col in PROB_COLUMNS}
+
+
+def build_empty_response_data(llm_name):
+    response_data = {
+        "raw_response": "",
+        "AnswerId": "",
+        "Answer": "",
+    }
+    if llm_name == "chatgpt":
+        response_data.update(build_empty_label_probs())
+    else:
+        response_data["Confidence"] = ""
+    return response_data
+
+
+def normalize_confidence(confidence):
+    if confidence is None or confidence == "":
+        return ""
+    try:
+        confidence_text = str(confidence).strip().rstrip("%")
+        confidence_value = float(confidence_text)
+    except ValueError:
+        return ""
+    if confidence_value > 1 and confidence_value <= 100:
+        confidence_value = confidence_value / 100
+    if confidence_value < 0 or confidence_value > 1:
+        return ""
+    return confidence_value
+
+
+def parse_claude_answer_and_confidence(response):
+    text = response.strip()
+    json_match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    if json_match:
+        try:
+            data = json.loads(json_match.group(0))
+            answer_id = normalize_label_id(data.get("Answer") or data.get("answer"))
+            confidence = normalize_confidence(data.get("Confidence") or data.get("confidence"))
+            return answer_id or "", confidence
+        except json.JSONDecodeError:
+            pass
+
+    answer_id = normalize_label_id(text) or ""
+    confidence_match = re.search(
+        r"(?:confidence|置信度)\s*[:=]\s*([0-9]*\.?[0-9]+%?)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    confidence = normalize_confidence(confidence_match.group(1)) if confidence_match else ""
+    return answer_id, confidence
+
+
+def extract_label_probs(choice):
+    """从首个输出 token 的 top_logprobs 中提取 0..5 的类别概率。"""
+    probs = {prob_col: 0.0 for prob_col in PROB_COLUMNS}
+    # answer_id in [0-5]
+    answer_id = normalize_label_id(choice.message.content or "")
+
+    if not choice.logprobs or not choice.logprobs.content:
+        raise RuntimeError("OpenAI response 中没有 logprobs.content")
+
+    first_token_logprob = choice.logprobs.content[0]
+    generated_label_id = normalize_label_id(first_token_logprob.token)
+    if answer_id is None:
+        answer_id = generated_label_id
+
+    top_logprobs = first_token_logprob.top_logprobs or []
+    for item in top_logprobs:
+        label_id = normalize_label_id(item.token)
+        if label_id is None:
+            continue
+        probs[f"prob_{label_id}"] = max(probs[f"prob_{label_id}"], math.exp(item.logprob))
+
+    if generated_label_id is not None:
+        probs[f"prob_{generated_label_id}"] = max(
+            probs[f"prob_{generated_label_id}"],
+            math.exp(first_token_logprob.logprob),
+        )
+
+    prob_sum = sum(probs.values())
+    if prob_sum > 0:
+        probs = {prob_col: prob_value / prob_sum for prob_col, prob_value in probs.items()}
+
+    if answer_id is None and prob_sum > 0:
+        answer_id = max(LABEL_ID_TO_NAME, key=lambda label_id: probs[f"prob_{label_id}"])
+
+    answer = LABEL_ID_TO_NAME.get(answer_id, "")
+    return answer_id or "", answer, probs
 
 
 def create_client(llm_name):
@@ -55,10 +188,24 @@ def query_chatgpt(client:OpenAI, content):
     response = client.chat.completions.create(
         model="gpt-5.6-sol", # gpt-5.6-sol
         messages=[{"role": "user", "content": content}],
-        temperature=temperature
-        # logprobs=True
+        temperature=0,
+        logprobs=True,
+        top_logprobs=6, # 6个分类
+        max_completion_tokens=1,
     )
-    return response.choices[0].message.content or ""
+    choice = response.choices[0]
+    print("finish_reason:", choice.finish_reason, flush=True)
+    print("content:", repr(choice.message.content), flush=True)
+    print("logprobs:", choice.logprobs, flush=True)
+    print("usage:", response.usage, flush=True)
+
+    answer_id, answer, probs = extract_label_probs(choice)
+    return {
+        "raw_response": choice.message.content or "",
+        "AnswerId": answer_id,
+        "Answer": answer,
+        **probs,
+    }
 
 
 def query_claude(client:anthropic.Anthropic, content):
@@ -66,10 +213,17 @@ def query_claude(client:anthropic.Anthropic, content):
     response = client.messages.create(
         model="claude-opus-4-6",
         messages=[{"role": "user", "content": content}],
-        max_tokens=1000,
-        temperature=temperature,
+        max_tokens=100,
+        temperature=0,
     )
-    return response.content[0].text or ""
+    raw_response = response.content[0].text or ""
+    answer_id, confidence = parse_claude_answer_and_confidence(raw_response)
+    return {
+        "raw_response": raw_response,
+        "AnswerId": answer_id,
+        "Answer": LABEL_ID_TO_NAME.get(answer_id, ""),
+        "Confidence": confidence,
+    }
 
 
 def is_retryable_error(error):
@@ -92,11 +246,7 @@ def query_with_retry(client, query_model, query, sample_id):
     for attempt in range(1, MAX_ATTEMPTS + 1):
         attempt_start_time = time.monotonic()
         try:
-            print(
-                f"开始请求 ID={sample_id}, "
-                f"attempt={attempt}/{MAX_ATTEMPTS}",
-                flush=True,
-            )
+            print(f"开始请求 ID={sample_id},attempt={attempt}/{MAX_ATTEMPTS}",flush=True)
             response = query_model(client, query)
             run_time = time.monotonic() - attempt_start_time
             return response, run_time, None
@@ -121,12 +271,15 @@ def chat(df, llm_name, exp_data_dir,repeat):
     """推理全部样本，并循环处理失败样本直到全部成功。"""
     client = create_client(llm_name)
     query_model = query_chatgpt if llm_name == "chatgpt" else query_claude
+    if llm_name == "claude":
+        print("Claude Messages API 不返回 logprobs，CSV 将保存模型自评 Confidence。", flush=True)
 
     # 提示词模板和输出目录只初始化一次。
-    with open("prompt.txt", encoding="utf-8") as prompt_file:
+    with open("prompt_prob.txt", encoding="utf-8") as prompt_file:
         prompt_template = prompt_file.read()
 
-    result_dir = os.path.join(exp_data_dir, f"{llm_name}_res", f"repeat_{repeat}")
+    result_name = f"{llm_name}_prob"
+    result_dir = os.path.join(exp_data_dir, f"{result_name}_res", f"repeat_{repeat}")
     os.makedirs(result_dir,exist_ok=True)
     answer_dir = os.path.join(result_dir, "answer")
     time_dir = os.path.join(result_dir, "time")
@@ -134,25 +287,23 @@ def chat(df, llm_name, exp_data_dir,repeat):
     os.makedirs(answer_dir, exist_ok=True)
     os.makedirs(time_dir, exist_ok=True)
     os.makedirs(error_dir, exist_ok=True)
-    csv_save_path = os.path.join(result_dir, f"{llm_name}.csv")
+    csv_save_path = os.path.join(result_dir, f"{result_name}.csv")
 
     results_by_id = {}
     pending_rows = list(df.itertuples(index=False))
     retry_round = 1
 
     try:
-        while pending_rows:
-            print(
-                f"开始第 {retry_round} 轮，待处理数量:"
-                f"{len(pending_rows)}",
-                flush=True,
-            )
-            failed_rows = []
-
+        while pending_rows: # 当你还有代办人员
+            print(f"开始第 {retry_round} 轮，待处理数量:{len(pending_rows)}",flush=True)
+            failed_rows = [] # 准备存储当前轮次还会失败的行
             for row in pending_rows:
-                sample_id = row.Id
-                query = prompt_template.replace("<Text>", row.Text)
-                response, run_time, error_message = query_with_retry(
+                sample_id = row.Id # post id
+                if llm_name == "chatgpt":
+                    query = build_prob_query(prompt_template, row.Text)
+                else:
+                    query = build_claude_confidence_query(prompt_template, row.Text)
+                response_data, run_time, error_message = query_with_retry(
                     client,
                     query_model,
                     query,
@@ -162,12 +313,13 @@ def chat(df, llm_name, exp_data_dir,repeat):
                 error_path = os.path.join(error_dir, f"{sample_id}.txt")
 
                 if status == "success":
+                    raw_response = response_data["raw_response"]
                     with open(
                         os.path.join(answer_dir, f"{sample_id}.txt"),
                         "w",
                         encoding="utf-8",
                     ) as answer_file:
-                        answer_file.write(response)
+                        answer_file.write(raw_response)
 
                     # error 文件只是临时失败状态，成功后清除。
                     if os.path.exists(error_path):
@@ -180,6 +332,7 @@ def chat(df, llm_name, exp_data_dir,repeat):
                         encoding="utf-8",
                     ) as error_file:
                         error_file.write(error_message)
+                    response_data = build_empty_response_data(llm_name)
 
                 with open(
                     os.path.join(time_dir, f"{sample_id}.txt"),
@@ -188,19 +341,28 @@ def chat(df, llm_name, exp_data_dir,repeat):
                 ) as time_file:
                     time_file.write(str(run_time))
 
+                true_label = getattr(row, "LabelNum", row.Label)
+                pred_label = response_data["AnswerId"]
                 print(
-                    f"{sample_id}\t{status}\t{response}\t"
-                    f"{row.Label}\t{run_time}",
+                    f"{sample_id}\t{status}\t{pred_label}\t"
+                    f"{true_label}\t{run_time}",
                     flush=True,
                 )
-                results_by_id[sample_id] = {
+                result_row = {
                     "Id": sample_id,
-                    "Answer": response,
-                    "Label": row.Label,
+                    "True": true_label,
+                    "pred": pred_label,
+                }
+                if llm_name == "chatgpt":
+                    result_row.update({prob_col: response_data[prob_col] for prob_col in PROB_COLUMNS})
+                else:
+                    result_row["Confidence"] = response_data["Confidence"]
+                result_row.update({
                     "Time": run_time,
                     "Status": status,
                     "Error": error_message or "",
-                }
+                })
+                results_by_id[sample_id] = result_row
 
                 # 每完成一条就更新 CSV，避免程序中途退出后丢失进度。
                 pd.DataFrame(results_by_id.values()).to_csv(
@@ -260,7 +422,7 @@ def main():
     print(f"当前进程 PID: {os.getpid()}")
     repeat_num = 15
     start_time = time.monotonic()
-    exp_data_dir = "/data/mml/DL_bug_classification/xwj_reproduction"
+    exp_data_dir = os.path.join(exp_root_dir,"xwj_reproduction")
     dataset_split_method = "random"  # random|time
     llm_name = "chatgpt"  # chatgpt|claude
     for repeat in range(1,1+repeat_num):
@@ -269,7 +431,7 @@ def main():
         print(
             f"=== 实验重复:{repeat}, "
             f"dataset_split_method:{dataset_split_method}, "
-            f"rs:{rs}, testset大小:{len(test_df)} ==="
+            f"数据集切分随机数种子:{rs}, testset大小:{len(test_df)} ==="
         )
         try:
             chat(test_df, llm_name, exp_data_dir,repeat)
@@ -284,5 +446,6 @@ def main():
             )
 
 if __name__ == "__main__":
+    exp_root_dir = "/data/mml/DL_bug_classification"
     temperature =0.0
     main()

@@ -9,8 +9,9 @@ import pandas as pd
 import time
 import sys
 import numpy as np
-from sklearn.metrics import accuracy_score, f1_score, classification_report
+from sklearn.metrics import accuracy_score, f1_score, classification_report, roc_auc_score
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import label_binarize
 from collections import Counter
 import os
 import shutil
@@ -84,42 +85,7 @@ def add_one_vs_rest_accuracy(report:dict, gt_labels:list, p_labels:list, label_n
     return report
 
 
-def testing(trained_model_dir:str,df:pd.DataFrame,rs=42, device='cuda:0'):
-    '''
-    测试函数
-    '''
-    # 加载回来tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(trained_model_dir, use_fast=True)
-    # 加载回model
-    model = AutoModelForSequenceClassification.from_pretrained(trained_model_dir) 
-    model.to(device)
-
-    X_test, y_test = list(df["Text"]), list(df["LabelNum"])
-    print(f"测试集大小:{len(X_test)}")
-    # 测试集加载器
-    test_loader = DataLoader(TextDataset(X_test, y_test, tokenizer), batch_size=32, shuffle=False)
-
-    # 模型进入评估模式
-    model.eval()
-    
-    p_labels = [] # 预测 class idx list
-    gt_labels = [] # 真值class idx list
-    probs = []
-    with torch.no_grad():
-        for batch in test_loader:
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            labels = batch['labels'].to(device)
-
-            outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
-            logits = outputs.logits
-            preds = torch.argmax(logits, dim=-1) # 预测class idx
-            batch_probs = torch.softmax(logits, dim=-1) # logits -> probs
-
-            p_labels.extend(preds.cpu().numpy()) 
-            gt_labels.extend(labels.cpu().numpy())
-            probs.extend(batch_probs.cpu().numpy().tolist())
-    # 统计指标
+def build_report(gt_labels:list, p_labels:list) -> dict:
     label_nums = LABEL_NUMS
     res = classification_report(
         gt_labels,
@@ -128,16 +94,139 @@ def testing(trained_model_dir:str,df:pd.DataFrame,rs=42, device='cuda:0'):
         output_dict=True,
         zero_division=0,
     )
-    res = add_one_vs_rest_accuracy(res, gt_labels, p_labels, label_nums)
-    predict_df = pd.DataFrame({
+    return add_one_vs_rest_accuracy(res, gt_labels, p_labels, label_nums)
+
+
+def build_prediction_df(df:pd.DataFrame, gt_labels:list, p_labels:list, probs:list) -> pd.DataFrame:
+    probs_array = np.asarray(probs)
+    predict_data = {
         "True": gt_labels,
-        "Pred": p_labels,
-        "Probs": probs,
-    })
+        "pred": p_labels,
+    }
     if "Id" in df.columns:
-        predict_df.insert(0, "Id", list(df["Id"]))
+        predict_data = {"Id": list(df["Id"]), **predict_data}
+
+    for label_num in LABEL_NUMS:
+        predict_data[f"prob_{label_num}"] = probs_array[:, label_num]
+
+    return pd.DataFrame(predict_data)
+
+
+def infer_trained_model(trained_model_dir:str, df:pd.DataFrame, device='cuda:0'):
+    '''
+    使用 trained model 对 df 推理，返回真值、预测类别和每类概率。
+    '''
+    tokenizer = AutoTokenizer.from_pretrained(trained_model_dir, use_fast=True)
+    model = AutoModelForSequenceClassification.from_pretrained(trained_model_dir)
+    model.to(device)
+
+    X_test, y_test = list(df["Text"]), list(df["LabelNum"])
+    print(f"测试集大小:{len(X_test)}")
+    test_loader = DataLoader(TextDataset(X_test, y_test, tokenizer), batch_size=32, shuffle=False)
+
+    model.eval()
+
+    p_labels = []
+    gt_labels = []
+    probs = []
+    with torch.no_grad():
+        for batch in test_loader:
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels = batch['labels'].to(device)
+
+            outputs = model(input_ids, attention_mask=attention_mask)
+            logits = outputs.logits
+            preds = torch.argmax(logits, dim=-1)
+            batch_probs = torch.softmax(logits, dim=-1)
+
+            p_labels.extend(preds.cpu().numpy().tolist())
+            gt_labels.extend(labels.cpu().numpy().tolist())
+            probs.extend(batch_probs.cpu().numpy().tolist())
+
+    return gt_labels, p_labels, probs
+
+
+def testing(trained_model_dir:str,df:pd.DataFrame,rs=42, device='cuda:0'):
+    '''
+    测试函数
+    '''
+    gt_labels, p_labels, probs = infer_trained_model(trained_model_dir, df, device=device)
+    res = build_report(gt_labels, p_labels)
+    predict_df = build_prediction_df(df, gt_labels, p_labels, probs)
     # 返回统计指标
     return res, predict_df
+
+def build_all_res_row_from_infer_df(infer_df:pd.DataFrame) -> dict:
+    gt_labels = list(infer_df["True"])
+    pred_col = "pred" if "pred" in infer_df.columns else "Pred"
+    p_labels = list(infer_df[pred_col])
+    prob_cols = [f"prob_{label_num}" for label_num in LABEL_NUMS]
+    missing_prob_cols = [col for col in prob_cols if col not in infer_df.columns]
+    if missing_prob_cols:
+        raise ValueError(f"推理CSV缺少概率列:{missing_prob_cols}")
+
+    probs = infer_df[prob_cols].to_numpy()
+    gt_binary = label_binarize(gt_labels, classes=LABEL_NUMS)
+    pred_binary = label_binarize(p_labels, classes=LABEL_NUMS)
+    report = classification_report(
+        gt_labels,
+        p_labels,
+        labels=LABEL_NUMS,
+        output_dict=True,
+        zero_division=0,
+    )
+
+    row = {}
+    for label_num in LABEL_NUMS:
+        row[f"acc_{label_num}"] = accuracy_score(
+            gt_binary[:, label_num],
+            pred_binary[:, label_num],
+        )
+        row[f"f1_{label_num}"] = f1_score(
+            gt_binary[:, label_num],
+            pred_binary[:, label_num],
+            zero_division=0,
+        )
+        try:
+            row[f"auc_{label_num}"] = roc_auc_score(
+                gt_binary[:, label_num],
+                probs[:, label_num],
+            )
+        except ValueError:
+            row[f"auc_{label_num}"] = np.nan
+
+    row["acc_all"] = report["accuracy"]
+    row["f1_all"] = report["macro avg"]["f1-score"]
+    try:
+        row["auc_all"] = roc_auc_score(
+            gt_binary,
+            probs,
+            average="macro",
+        )
+    except ValueError:
+        row["auc_all"] = np.nan
+    return row
+
+
+def save_all_res_from_infer_csvs(save_dir:str, model_name:str, seeds:list) -> str:
+    all_rows = []
+    for rs in seeds:
+        infer_csv_path = os.path.join(save_dir, f"seed_{rs}", f"{model_name}.csv")
+        infer_df = pd.read_csv(infer_csv_path)
+        all_rows.append(build_all_res_row_from_infer_df(infer_df))
+
+    all_res_df = pd.DataFrame(all_rows)
+    ordered_columns = []
+    for label_num in LABEL_NUMS:
+        ordered_columns.extend([f"acc_{label_num}", f"f1_{label_num}", f"auc_{label_num}"])
+    ordered_columns.extend(["acc_all", "f1_all", "auc_all"])
+    all_res_df = all_res_df[ordered_columns]
+
+    all_res_path = os.path.join(save_dir, "all_res.csv")
+    all_res_df.to_csv(all_res_path, index=False)
+    return all_res_path
+
 
 def eval_bert(model_name:str,device:str,dataset_split_method:str):
     '''
@@ -148,53 +237,78 @@ def eval_bert(model_name:str,device:str,dataset_split_method:str):
     assert model_name in ["sobert","codebert","robert"], "model_name 传参错误"
     save_dir = os.path.join(exp_data_dir,f"{model_name}_res")
     os.makedirs(save_dir,exist_ok=True)
-    save_file_name = "res.joblib"
-    save_path = os.path.join(save_dir,save_file_name)
-    all_res = {}
-    for rs in range(42,42+15):
+    # save_file_name = "res.joblib"
+    # save_path = os.path.join(save_dir,save_file_name)
+    # all_res = {}
+    seeds = list(range(42,42+15))
+    for rs in seeds:
         print(f"随机数种子:{rs}")
         test_df = build_test_df(dataset_split_method, rs)
         trained_model_dir = os.path.join(exp_data_dir,"trained_models",model_name,f"ft_model_{rs}")
-        res, predict_df = testing(trained_model_dir,test_df,rs=rs, device=device)
-        all_res[rs] = res
+        gt_labels, p_labels, probs = infer_trained_model(trained_model_dir, test_df, device=device)
+        predict_df = build_prediction_df(test_df, gt_labels, p_labels, probs)
+        # res = build_report(gt_labels, p_labels)
+        # all_res[rs] = res
 
         predict_save_dir = os.path.join(save_dir, f"seed_{rs}")
         os.makedirs(predict_save_dir, exist_ok=True)
         predict_save_path = os.path.join(predict_save_dir, f"{model_name}.csv")
         predict_df.to_csv(predict_save_path, index=False)
-        print(f"{model_name} seed {rs} 测试集预测结果保存在:{predict_save_path}")
+        print(f"{model_name} seed {rs} 测试集推理结果保存在:{predict_save_path}")
 
-    joblib.dump(all_res,save_path)
-    print(f"{model_name}实验指标保存在:{save_path}")
+    all_res_path = save_all_res_from_infer_csvs(save_dir, model_name, seeds)
+    print(f"{model_name} 15次推理指标CSV保存在:{all_res_path}")
+
+    # joblib.dump(all_res,save_path)
+    # print(f"{model_name}实验指标保存在:{save_path}")
+
+
 
 def eval_tfidf_and_word2vec(method_name):
     assert method_name in ["tfidf","word2vec"], "method_name 传参错误"
     save_dir = os.path.join(exp_data_dir,f"{method_name}_res")
     os.makedirs(save_dir,exist_ok=True)
-    save_file_name = "res.joblib"
-    save_path = os.path.join(save_dir,save_file_name)
-    all_res = {}
+    # save_file_name = "res.joblib"
+    # save_path = os.path.join(save_dir,save_file_name)
+    all_res_csv_path = os.path.join(save_dir, "all_res.csv")
+    clf_names = ["LR","DT","RF","SVM","KNN"]
+    metric_columns = []
+    for label_num in LABEL_NUMS:
+        metric_columns.extend([f"acc_{label_num}", f"f1_{label_num}", f"auc_{label_num}"])
+    metric_columns.extend(["acc_all", "f1_all", "auc_all"])
+
+    # all_res = {}
+    all_res_rows = []
     for rs in range(42,42+15):
         print(f"随机数种子:{rs}")
-        all_res[rs] = {}
+        # all_res[rs] = {}
+        all_res_row = {}
         predict_dir = os.path.join(exp_data_dir,f"trained_{method_name}",f"seed_{rs}")
-        for clf_name in ["LR","DT","RF","SVM","KNN"]:
+        for clf_name in clf_names:
             print(f"分类器名称:{clf_name}")
-            cls_df = pd.read_csv(os.path.join(predict_dir,f"{clf_name}.csv"))
-            gt_labels = list(cls_df["True"])
-            p_labels = list(cls_df["Pred"])
-            label_nums = LABEL_NUMS
-            cls_res = classification_report(
-                gt_labels,
-                p_labels,
-                labels=label_nums,
-                output_dict=True,
-                zero_division=0,
-            )
-            cls_res = add_one_vs_rest_accuracy(cls_res, gt_labels, p_labels, label_nums)
-            all_res[rs][clf_name] = cls_res
-    joblib.dump(all_res,save_path)
-    print(f"{method_name}实验指标保存在:{save_path}")
+            clf_df = pd.read_csv(os.path.join(predict_dir,f"{clf_name}.csv"))
+            # gt_labels = list(clf_df["True"])
+            # pred_col = "pred" if "pred" in clf_df.columns else "Pred"
+            # p_labels = list(clf_df[pred_col])
+            # cls_res = build_report(gt_labels, p_labels)
+            # all_res[rs][clf_name] = cls_res
+            cls_all_res_row = build_all_res_row_from_infer_df(clf_df)
+            for metric_col in metric_columns:
+                all_res_row[f"{clf_name}_{metric_col}"] = cls_all_res_row[metric_col]
+        all_res_rows.append(all_res_row)
+
+    # joblib.dump(all_res,save_path)
+    # print(f"{method_name}实验指标保存在:{save_path}")
+
+    all_res_df = pd.DataFrame(all_res_rows)
+    ordered_columns = [
+        f"{clf_name}_{metric_col}"
+        for clf_name in clf_names
+        for metric_col in metric_columns
+    ]
+    all_res_df = all_res_df[ordered_columns]
+    all_res_df.to_csv(all_res_csv_path, index=False)
+    print(f"{method_name}实验指标CSV保存在:{all_res_csv_path}")
 
 def convert_llmlabelname2labelname(llm_labelname_list):
     res = []
@@ -342,10 +456,11 @@ def main():
 
     # eval_tfidf_and_word2vec("word2vec") # tfidf|word2vec
 
-    eval_llm("claude") # chatgpt|claude
+    # eval_llm("claude") # chatgpt|claude
 
     # eval_xwj()
     # eval_xwj_from_all_res()
+    pass
 if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification/xwj_reproduction"
     main()
