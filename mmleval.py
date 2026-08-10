@@ -209,12 +209,127 @@ def build_all_res_row_from_infer_df(infer_df:pd.DataFrame) -> dict:
     return row
 
 
+def build_llm_pseudo_probs(p_labels:list, confidences:np.ndarray) -> np.ndarray:
+    '''
+    方案B: LLM 只有 pred + Confidence 时，构造近似概率分布。
+    P(pred)=Confidence，其他类别均分 1-Confidence。
+    '''
+    class_nums = len(LABEL_NUMS)
+    probs = np.zeros((len(p_labels), class_nums))
+    for row_idx, pred_label in enumerate(p_labels):
+        other_prob = (1 - confidences[row_idx]) / (class_nums - 1)
+        probs[row_idx, :] = other_prob
+        probs[row_idx, int(pred_label)] = confidences[row_idx]
+    return probs
+
+
+def build_all_res_row_from_llm_df(llm_df:pd.DataFrame) -> dict:
+    '''
+    基于 LLM 自评 Confidence 结果生成 all_res.csv 的一行指标。
+    Confidence 表示模型认为 pred 正确的概率；非预测类的分数用剩余概率均分近似。
+    '''
+    required_columns = ["True", "pred", "Confidence"]
+    missing_columns = [col for col in required_columns if col not in llm_df.columns]
+    if missing_columns:
+        raise ValueError(f"LLM CSV缺少必要列:{missing_columns}")
+
+    if "Status" in llm_df.columns:
+        failed_df = llm_df[llm_df["Status"].astype(str).str.lower() != "success"]
+        if not failed_df.empty:
+            failed_ids = list(failed_df["Id"]) if "Id" in failed_df.columns else list(failed_df.index)
+            raise ValueError(f"LLM CSV仍有失败样本，无法生成完整指标，失败ID:{failed_ids[:20]}")
+
+    gt_labels = pd.to_numeric(llm_df["True"], errors="coerce")
+    p_labels = pd.to_numeric(llm_df["pred"], errors="coerce")
+    confidences = pd.to_numeric(llm_df["Confidence"], errors="coerce")
+
+    invalid_gt_mask = gt_labels.isna() | ~gt_labels.isin(LABEL_NUMS)
+    if invalid_gt_mask.any():
+        raise ValueError(f"True列存在非0-5标签，行号:{list(llm_df.index[invalid_gt_mask])[:20]}")
+
+    invalid_pred_mask = p_labels.isna() | ~p_labels.isin(LABEL_NUMS)
+    if invalid_pred_mask.any():
+        raise ValueError(f"pred列存在非0-5标签，行号:{list(llm_df.index[invalid_pred_mask])[:20]}")
+
+    invalid_confidence_mask = confidences.isna() | (confidences < 0) | (confidences > 1)
+    if invalid_confidence_mask.any():
+        raise ValueError(
+            f"Confidence列存在非0-1数值，行号:{list(llm_df.index[invalid_confidence_mask])[:20]}"
+        )
+
+    gt_labels = gt_labels.astype(int).tolist()
+    p_labels = p_labels.astype(int).tolist()
+    confidences = confidences.astype(float).to_numpy()
+
+    probs = build_llm_pseudo_probs(p_labels, confidences)
+
+    gt_binary = label_binarize(gt_labels, classes=LABEL_NUMS)
+    pred_binary = label_binarize(p_labels, classes=LABEL_NUMS)
+    report = classification_report(
+        gt_labels,
+        p_labels,
+        labels=LABEL_NUMS,
+        output_dict=True,
+        zero_division=0,
+    )
+
+    row = {}
+    for label_num in LABEL_NUMS:
+        row[f"acc_{label_num}"] = accuracy_score(
+            gt_binary[:, label_num],
+            pred_binary[:, label_num],
+        )
+        row[f"f1_{label_num}"] = f1_score(
+            gt_binary[:, label_num],
+            pred_binary[:, label_num],
+            zero_division=0,
+        )
+        try:
+            row[f"auc_{label_num}"] = roc_auc_score(
+                gt_binary[:, label_num],
+                probs[:, label_num],
+            )
+        except ValueError:
+            row[f"auc_{label_num}"] = np.nan
+
+    row["acc_all"] = report["accuracy"]
+    row["f1_all"] = report["macro avg"]["f1-score"]
+    try:
+        row["auc_all"] = roc_auc_score(
+            gt_binary,
+            probs,
+            average="macro",
+        )
+    except ValueError:
+        row["auc_all"] = np.nan
+    return row
+
+
 def save_all_res_from_infer_csvs(save_dir:str, model_name:str, seeds:list) -> str:
     all_rows = []
     for rs in seeds:
         infer_csv_path = os.path.join(save_dir, f"seed_{rs}", f"{model_name}.csv")
         infer_df = pd.read_csv(infer_csv_path)
         all_rows.append(build_all_res_row_from_infer_df(infer_df))
+
+    all_res_df = pd.DataFrame(all_rows)
+    ordered_columns = []
+    for label_num in LABEL_NUMS:
+        ordered_columns.extend([f"acc_{label_num}", f"f1_{label_num}", f"auc_{label_num}"])
+    ordered_columns.extend(["acc_all", "f1_all", "auc_all"])
+    all_res_df = all_res_df[ordered_columns]
+
+    all_res_path = os.path.join(save_dir, "all_res.csv")
+    all_res_df.to_csv(all_res_path, index=False)
+    return all_res_path
+
+
+def save_all_res_from_llm_csvs(save_dir:str, result_name:str, repeat_nums:list) -> str:
+    all_rows = []
+    for repeat in repeat_nums:
+        llm_csv_path = os.path.join(save_dir, f"repeat_{repeat}", f"{result_name}.csv")
+        llm_df = pd.read_csv(llm_csv_path)
+        all_rows.append(build_all_res_row_from_llm_df(llm_df))
 
     all_res_df = pd.DataFrame(all_rows)
     ordered_columns = []
@@ -341,39 +456,12 @@ def eval_llm(llm_name:str):
     llm_name:claude|chatgpt
     '''
     assert llm_name in ["claude","chatgpt"], "llm_name 传参错误"
-    save_dir = os.path.join(exp_data_dir,f"{llm_name}_res")
+    result_name = f"{llm_name}_prob"
+    save_dir = os.path.join(exp_data_dir,f"{result_name}_res")
     os.makedirs(save_dir,exist_ok=True)
-    save_file_name = "res.joblib"
-    save_path = os.path.join(save_dir,save_file_name)
-    all_res = {}
-
-    labelname_to_labelnum = {}
-    test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
-    for row_id,row in test_df.iterrows():
-        labelname_to_labelnum[row["Label"]] = row["LabelNum"]
-
-    for repeat in range(1,16):
-        print(f"重复id:{repeat}")
-        all_res[repeat] = {}
-        llm_df = pd.read_csv(os.path.join(exp_data_dir,f"{llm_name}_res",f"repeat_{repeat}",f"{llm_name}.csv"))
-        gt_labelnames = list(llm_df["Label"])
-        llm_labelnames = list(llm_df["Answer"])
-        # print(set(llm_labelnames))
-        gt_labels = convert_labelname2labelnum(gt_labelnames,labelname_to_labelnum)
-        p_labels = convert_labelname2labelnum(convert_llmlabelname2labelname(llm_labelnames),labelname_to_labelnum)
-        assert len(gt_labels) == len(p_labels), "label转换出错了"
-        label_nums = LABEL_NUMS
-        llm_res = classification_report(
-            gt_labels,
-            p_labels,
-            labels=label_nums,
-            output_dict=True,
-            zero_division=0,
-        )
-        llm_res = add_one_vs_rest_accuracy(llm_res, gt_labels, p_labels, label_nums)
-        all_res[repeat] = llm_res
-    joblib.dump(all_res,save_path)
-    print(f"{llm_name}实验指标保存在:{save_path}")
+    repeat_nums = list(range(1,16))
+    all_res_path = save_all_res_from_llm_csvs(save_dir, result_name, repeat_nums)
+    print(f"{llm_name} 15次LLM指标CSV保存在:{all_res_path}")
 
 
 def eval_xwj():
@@ -454,9 +542,9 @@ def main():
     # dataset_split_method = "random" # random|time
     # eval_bert(bertname, device, dataset_split_method)
 
-    eval_tfidf_and_word2vec("word2vec") # tfidf|word2vec
+    # eval_tfidf_and_word2vec("word2vec") # tfidf|word2vec
 
-    # eval_llm("claude") # chatgpt|claude
+    eval_llm("claude") # chatgpt|claude
 
     # eval_xwj()
     # eval_xwj_from_all_res()

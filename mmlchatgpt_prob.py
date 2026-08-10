@@ -378,7 +378,7 @@ def main():
     start_time = time.monotonic()
     exp_data_dir = os.path.join(exp_root_dir,"xwj_reproduction")
     dataset_split_method = "random"  # random|time
-    llm_name = "claude"  # chatgpt|claude
+    llm_name = "chatgpt"  # chatgpt|claude
     for repeat in range(1,1+repeat_num):
         rs = 42 + repeat - 1
         test_df = build_testset(dataset_split_method, rs)
