@@ -1,0 +1,16 @@
+
+##############################################################################################################
+重新修改mmlcompare.py代码。
+比较7个方法指标。
+（1）sobert 15次实验的各个指标结果：/data/mml/DL_bug_classification/xwj_reproduction/sobert_res/all_res.csv
+（2）robert 15次实验的各个指标结果：/data/mml/DL_bug_classification/xwj_reproduction/robert_res/all_res.csv
+（3）codebert 15次实验的各个指标结果：/data/mml/DL_bug_classification/xwj_reproduction/codebert_res/all_res.csv
+（4）tfidf 15次实验的各个指标结果：/data/mml/DL_bug_classification/xwj_reproduction/tfidf_res/all_res.csv
+    其中细分LR,DT,RF,SVM,KNN
+（5）word2vec 15次实验的各个指标结果：/data/mml/DL_bug_classification/xwj_reproduction/word2vec_res/all_res.csv
+    其中细分LR,DT,RF,SVM,KNN
+（6）chatgpt 15次实验的各个指标结果：/data/mml/DL_bug_classification/xwj_reproduction/chatgpt_prob_res/all_res.csv
+（7）claude 15次实验的各个指标结果：/data/mml/DL_bug_classification/xwj_reproduction/claude_prob_res/all_res.csv
+最终输出csv类似：result_xwj_reproduction.csv。
+你先写代码，先不要运行。
+##############################################################################################################

@@ -544,7 +544,7 @@ def main():
 
     # eval_tfidf_and_word2vec("word2vec") # tfidf|word2vec
 
-    eval_llm("claude") # chatgpt|claude
+    # eval_llm("claude") # chatgpt|claude
 
     # eval_xwj()
     # eval_xwj_from_all_res()
