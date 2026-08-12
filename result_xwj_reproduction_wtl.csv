@@ -1,0 +1,15 @@
+row_name,all_acc,all_f1,all_auc,model_acc,model_f1,model_auc,tensor_acc,tensor_f1,tensor_auc,training_acc,training_f1,training_auc,gpu_acc,gpu_f1,gpu_auc,api_acc,api_f1,api_auc,Others_acc,Others_f1,Others_auc
+robert,W,W,W,T,T,T,W,W,T,T,T,T,T,T,T,W,W,W,T,T,W
+codebert,W,W,W,T,W,W,T,W,T,T,T,T,T,T,W,W,W,W,W,W,T
+tfidf_LR,W,W,W,T,W,T,T,T,T,W,T,W,W,W,W,W,W,W,W,W,W
+tfidf_DT,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W
+tfidf_RF,W,W,W,T,T,L,T,T,T,T,W,W,W,W,T,W,W,W,W,W,W
+tfidf_SVM,W,W,W,T,W,T,T,T,T,W,T,W,W,W,W,W,W,W,W,W,W
+tfidf_KNN,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W
+word2vec_LR,W,W,W,T,W,T,W,W,W,W,T,W,W,W,W,W,W,W,W,W,W
+word2vec_DT,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W
+word2vec_RF,W,W,W,T,T,W,W,W,W,T,T,W,W,W,W,W,W,W,W,W,W
+word2vec_SVM,W,W,W,W,W,T,W,W,W,W,T,W,W,W,W,W,W,W,W,W,W
+word2vec_KNN,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W
+chatgpt,T,T,W,L,T,T,W,W,T,L,L,T,T,L,T,W,W,W,T,T,T
+claude,T,T,W,T,T,W,W,W,W,L,L,T,T,L,T,W,W,W,T,T,T

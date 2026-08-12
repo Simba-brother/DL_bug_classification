@@ -228,7 +228,7 @@ def baseline_method(rs, baseline_name, dataset_split_method):
 def main():
     s_time=time.time()
     method_name = "word2vec" # tfidf|word2vec
-    dataset_split_method = "random" # random|time
+    dataset_split_method = "time" # random|time
     print(f"基线名称:{method_name}")
     print(f"数据集切分方式:{dataset_split_method}")
     repeat_num = 15 # 重复实验次数
@@ -246,5 +246,5 @@ def main():
 if __name__ == "__main__":
     pid = os.getpid()
     print(f"pid:{pid}")
-    exp_data_dir = "/data/mml/DL_bug_classification/xwj_reproduction"
+    exp_data_dir = "/data/mml/DL_bug_classification/"
     main()

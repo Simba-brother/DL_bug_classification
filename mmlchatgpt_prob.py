@@ -10,7 +10,7 @@ from openai import OpenAI
 from sklearn.model_selection import train_test_split
 
 
-REQUEST_TIMEOUT = 10 # 单条最大请求时间
+REQUEST_TIMEOUT = 15 # 单条最大请求时间
 MAX_ATTEMPTS = 2 # 单条最多重试步骤
 REQUEST_INTERVAL = 3.0 # 请求间隔
 RETRY_ROUND_INTERVAL = 10.0  # 一轮失败任务结束后，等待再重试
@@ -376,8 +376,9 @@ def main():
     print(f"当前进程 PID: {os.getpid()}")
     repeat_num = 15
     start_time = time.monotonic()
-    exp_data_dir = os.path.join(exp_root_dir,"xwj_reproduction")
-    dataset_split_method = "random"  # random|time
+    # exp_data_dir = os.path.join(exp_root_dir,"xwj_reproduction")
+    exp_data_dir = exp_root_dir
+    dataset_split_method = "time"  # random|time
     llm_name = "chatgpt"  # chatgpt|claude
     for repeat in range(1,1+repeat_num):
         rs = 42 + repeat - 1
