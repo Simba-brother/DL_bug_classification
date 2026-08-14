@@ -75,6 +75,33 @@ def build_test_df(dataset_split_method:str, rs:int) -> pd.DataFrame:
     raise ValueError("dataset_split_method 只能是 random 或 time")
 
 
+def build_experiment_configs(experiment_setting:str):
+    if experiment_setting == "seed_15":
+        return [
+            {
+                "exp_id": str(split_seed),
+                "split_seed": split_seed,
+                "repeat_id": repeat_id,
+                "llm_exp_id": str(repeat_id),
+            }
+            for repeat_id, split_seed in enumerate(range(42, 42 + 15), start=1)
+        ]
+
+    if experiment_setting == "seed_5_repeat_3":
+        return [
+            {
+                "exp_id": f"{split_seed}_{repeat_id}",
+                "split_seed": split_seed,
+                "repeat_id": repeat_id,
+                "llm_exp_id": f"{split_seed}_{repeat_id}",
+            }
+            for split_seed in [42, 43, 44, 45, 46]
+            for repeat_id in [1, 2, 3]
+        ]
+
+    raise ValueError("experiment_setting 只能是 seed_15 或 seed_5_repeat_3")
+
+
 def add_one_vs_rest_accuracy(report:dict, gt_labels:list, p_labels:list, label_nums:list) -> dict:
     for label_num in label_nums:
         label_key = str(label_num)
@@ -305,10 +332,11 @@ def build_all_res_row_from_llm_df(llm_df:pd.DataFrame) -> dict:
     return row
 
 
-def save_all_res_from_infer_csvs(save_dir:str, model_name:str, seeds:list) -> str:
+def save_all_res_from_infer_csvs(save_dir:str, model_name:str, experiment_configs:list) -> str:
     all_rows = []
-    for rs in seeds:
-        infer_csv_path = os.path.join(save_dir, f"seed_{rs}", f"{model_name}.csv")
+    for experiment_config in experiment_configs:
+        exp_id = experiment_config["exp_id"]
+        infer_csv_path = os.path.join(save_dir, f"seed_{exp_id}", f"{model_name}.csv")
         infer_df = pd.read_csv(infer_csv_path)
         all_rows.append(build_all_res_row_from_infer_df(infer_df))
 
@@ -324,10 +352,11 @@ def save_all_res_from_infer_csvs(save_dir:str, model_name:str, seeds:list) -> st
     return all_res_path
 
 
-def save_all_res_from_llm_csvs(save_dir:str, result_name:str, repeat_nums:list) -> str:
+def save_all_res_from_llm_csvs(save_dir:str, result_name:str, experiment_configs:list) -> str:
     all_rows = []
-    for repeat in repeat_nums:
-        llm_csv_path = os.path.join(save_dir, f"repeat_{repeat}", f"{result_name}.csv")
+    for experiment_config in experiment_configs:
+        llm_exp_id = experiment_config["llm_exp_id"]
+        llm_csv_path = os.path.join(save_dir, f"repeat_{llm_exp_id}", f"{result_name}.csv")
         llm_df = pd.read_csv(llm_csv_path)
         all_rows.append(build_all_res_row_from_llm_df(llm_df))
 
@@ -343,11 +372,12 @@ def save_all_res_from_llm_csvs(save_dir:str, result_name:str, repeat_nums:list) 
     return all_res_path
 
 
-def eval_bert(model_name:str,device:str,dataset_split_method:str):
+def eval_bert(model_name:str,device:str,dataset_split_method:str,experiment_setting:str="seed_15"):
     '''
     model_name:sobert|codebert|robert
     device:'cuda:0'
     dataset_split_method:random|time
+    experiment_setting:seed_15|seed_5_repeat_3
     '''
     assert model_name in ["sobert","codebert","robert"], "model_name 传参错误"
     save_dir = os.path.join(exp_data_dir,f"{model_name}_res")
@@ -355,23 +385,31 @@ def eval_bert(model_name:str,device:str,dataset_split_method:str):
     # save_file_name = "res.joblib"
     # save_path = os.path.join(save_dir,save_file_name)
     # all_res = {}
-    seeds = list(range(42,42+15))
-    for rs in seeds:
-        print(f"随机数种子:{rs}")
-        test_df = build_test_df(dataset_split_method, rs)
-        trained_model_dir = os.path.join(exp_data_dir,"trained_models",model_name,f"ft_model_{rs}")
+    experiment_configs = build_experiment_configs(experiment_setting)
+    for experiment_config in experiment_configs:
+        exp_id = experiment_config["exp_id"]
+        split_seed = experiment_config["split_seed"]
+        repeat_id = experiment_config["repeat_id"]
+        print(
+            f"实验设置:{experiment_setting}, "
+            f"实验id:{exp_id}, "
+            f"数据集切分随机数种子:{split_seed}, "
+            f"重复id:{repeat_id}"
+        )
+        test_df = build_test_df(dataset_split_method, split_seed)
+        trained_model_dir = os.path.join(exp_data_dir,"trained_models",model_name,f"ft_model_{exp_id}")
         gt_labels, p_labels, probs = infer_trained_model(trained_model_dir, test_df, device=device)
         predict_df = build_prediction_df(test_df, gt_labels, p_labels, probs)
         # res = build_report(gt_labels, p_labels)
         # all_res[rs] = res
 
-        predict_save_dir = os.path.join(save_dir, f"seed_{rs}")
+        predict_save_dir = os.path.join(save_dir, f"seed_{exp_id}")
         os.makedirs(predict_save_dir, exist_ok=True)
         predict_save_path = os.path.join(predict_save_dir, f"{model_name}.csv")
         predict_df.to_csv(predict_save_path, index=False)
-        print(f"{model_name} seed {rs} 测试集推理结果保存在:{predict_save_path}")
+        print(f"{model_name} seed {exp_id} 测试集推理结果保存在:{predict_save_path}")
 
-    all_res_path = save_all_res_from_infer_csvs(save_dir, model_name, seeds)
+    all_res_path = save_all_res_from_infer_csvs(save_dir, model_name, experiment_configs)
     print(f"{model_name} 15次推理指标CSV保存在:{all_res_path}")
 
     # joblib.dump(all_res,save_path)
@@ -379,7 +417,7 @@ def eval_bert(model_name:str,device:str,dataset_split_method:str):
 
 
 
-def eval_tfidf_and_word2vec(method_name):
+def eval_tfidf_and_word2vec(method_name, experiment_setting:str="seed_15"):
     assert method_name in ["tfidf","word2vec"], "method_name 传参错误"
     save_dir = os.path.join(exp_data_dir,f"{method_name}_res")
     os.makedirs(save_dir,exist_ok=True)
@@ -394,11 +432,20 @@ def eval_tfidf_and_word2vec(method_name):
 
     # all_res = {}
     all_res_rows = []
-    for rs in range(42,42+15):
-        print(f"随机数种子:{rs}")
+    experiment_configs = build_experiment_configs(experiment_setting)
+    for experiment_config in experiment_configs:
+        exp_id = experiment_config["exp_id"]
+        split_seed = experiment_config["split_seed"]
+        repeat_id = experiment_config["repeat_id"]
+        print(
+            f"实验设置:{experiment_setting}, "
+            f"实验id:{exp_id}, "
+            f"数据集切分随机数种子:{split_seed}, "
+            f"重复id:{repeat_id}"
+        )
         # all_res[rs] = {}
         all_res_row = {}
-        predict_dir = os.path.join(exp_data_dir,f"trained_{method_name}",f"seed_{rs}")
+        predict_dir = os.path.join(exp_data_dir,f"trained_{method_name}",f"seed_{exp_id}")
         for clf_name in clf_names:
             print(f"分类器名称:{clf_name}")
             clf_df = pd.read_csv(os.path.join(predict_dir,f"{clf_name}.csv"))
@@ -451,16 +498,17 @@ def convert_labelname2labelnum(labelname_list, labelname_to_labelnum:dict):
     assert len(res) == len(labelname_list), "nametonum转换出错"
     return res
 
-def eval_llm(llm_name:str):
+def eval_llm(llm_name:str, experiment_setting:str="seed_15"):
     '''
     llm_name:claude|chatgpt
+    experiment_setting:seed_15|seed_5_repeat_3
     '''
     assert llm_name in ["claude","chatgpt"], "llm_name 传参错误"
     result_name = f"{llm_name}_prob"
     save_dir = os.path.join(exp_data_dir,f"{result_name}_res")
     os.makedirs(save_dir,exist_ok=True)
-    repeat_nums = list(range(1,16))
-    all_res_path = save_all_res_from_llm_csvs(save_dir, result_name, repeat_nums)
+    experiment_configs = build_experiment_configs(experiment_setting)
+    all_res_path = save_all_res_from_llm_csvs(save_dir, result_name, experiment_configs)
     print(f"{llm_name} 15次LLM指标CSV保存在:{all_res_path}")
 
 
@@ -538,16 +586,17 @@ def eval_xwj_from_all_res():
 
 def main():
     # bert系列
-    # device = "cuda:0"
-    # bertname = "robert" # sobert|codebert|robert
-    # dataset_split_method = "time" # random|time
-    # eval_bert(bertname, device, dataset_split_method)
+    device = "cuda:0"
+    bertname = "sobert" # sobert|codebert|robert
+    dataset_split_method = "time" # random|time
+    experiment_setting = "seed_15" # seed_15|seed_5_repeat_3
+    eval_bert(bertname, device, dataset_split_method, experiment_setting)
 
     # 传统系列
-    # eval_tfidf_and_word2vec("word2vec") # tfidf|word2vec
+    # eval_tfidf_and_word2vec("word2vec", experiment_setting) # tfidf|word2vec
 
     # 大模型系列
-    # eval_llm("claude") # chatgpt|claude
+    # eval_llm("claude", experiment_setting) # chatgpt|claude
 
     # eval_xwj()
     # eval_xwj_from_all_res()

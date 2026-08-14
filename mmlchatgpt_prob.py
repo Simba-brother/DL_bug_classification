@@ -223,7 +223,7 @@ def query_with_retry(client, query_model, query, sample_id):
             time.sleep(retry_delay)
 
 
-def chat(df, llm_name, exp_data_dir,repeat):
+def chat(df, llm_name, exp_data_dir, exp_id):
     """推理全部样本，并循环处理失败样本直到全部成功。"""
     client = create_client(llm_name)
     if llm_name == "chatgpt":
@@ -239,7 +239,7 @@ def chat(df, llm_name, exp_data_dir,repeat):
         prompt_template = prompt_file.read()
 
     result_name = f"{llm_name}_prob"
-    result_dir = os.path.join(exp_data_dir, f"{result_name}_res", f"repeat_{repeat}")
+    result_dir = os.path.join(exp_data_dir, f"{result_name}_res", f"repeat_{exp_id}")
     os.makedirs(result_dir,exist_ok=True)
     answer_dir = os.path.join(result_dir, "answer")
     time_dir = os.path.join(result_dir, "time")
@@ -372,24 +372,56 @@ def build_testset(dataset_split_method:str, rs:int) -> pd.DataFrame:
 
     raise ValueError("dataset_split_method 只能是 random 或 time")
 
+
+def build_experiment_configs(experiment_setting:str):
+    if experiment_setting == "seed_15":
+        return [
+            {
+                "exp_id": str(repeat),
+                "split_seed": 42 + repeat - 1,
+                "repeat_id": repeat,
+            }
+            for repeat in range(1, 1 + 15)
+        ]
+
+    if experiment_setting == "seed_5_repeat_3":
+        return [
+            {
+                "exp_id": f"{split_seed}_{repeat_id}",
+                "split_seed": split_seed,
+                "repeat_id": repeat_id,
+            }
+            for split_seed in [42, 43, 44, 45, 46]
+            for repeat_id in [1, 2, 3]
+        ]
+
+    raise ValueError("experiment_setting 只能是 seed_15 或 seed_5_repeat_3")
+
+
 def main():
     print(f"当前进程 PID: {os.getpid()}")
-    repeat_num = 15
     start_time = time.monotonic()
     # exp_data_dir = os.path.join(exp_root_dir,"xwj_reproduction")
     exp_data_dir = exp_root_dir
     dataset_split_method = "time"  # random|time
-    llm_name = "chatgpt"  # chatgpt|claude
-    for repeat in range(1,1+repeat_num):
-        rs = 42 + repeat - 1
-        test_df = build_testset(dataset_split_method, rs)
+    llm_name = "claude"  # chatgpt|claude
+    experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
+    experiment_configs = build_experiment_configs(experiment_setting)
+    repeat_num = len(experiment_configs)
+    print(f"实验设置:{experiment_setting}, 总实验次数:{repeat_num}")
+    for experiment_config in experiment_configs:
+        exp_id = experiment_config["exp_id"]
+        split_seed = experiment_config["split_seed"]
+        repeat_id = experiment_config["repeat_id"]
+        test_df = build_testset(dataset_split_method, split_seed)
         print(
-            f"=== 实验重复:{repeat}, "
+            f"=== 实验id:{exp_id}, "
+            f"重复id:{repeat_id}, "
             f"dataset_split_method:{dataset_split_method}, "
-            f"数据集切分随机数种子:{rs}, testset大小:{len(test_df)} ==="
+            f"数据集切分随机数种子:{split_seed}, testset大小:{len(test_df)} ==="
         )
         try:
-            chat(test_df, llm_name, exp_data_dir,repeat)
+            chat(test_df, llm_name, exp_data_dir, exp_id)
         finally:
             elapsed_seconds = int(time.monotonic() - start_time)
             hours, remainder = divmod(elapsed_seconds, 3600)

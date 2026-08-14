@@ -1,5 +1,5 @@
 """
-读取各个方法的 all_res.csv，并生成最终对比表 result_xwj_reproduction.csv。
+读取各个方法的 all_res.csv，并生成最终对比表 result.csv和result_wtl.csv。
 """
 import os
 
@@ -193,16 +193,16 @@ def eval_wtl():
 
     wtl_df = pd.DataFrame.from_dict(wtl_rows, orient="index")
     wtl_df.index.name = "row_name"
-    wtl_df.to_csv("result_xwj_reproduction_wtl.csv", index=True)
+    wtl_df.to_csv("result_wtl.csv", index=True)
     return sobert_metric_lists, baseline_metric_lists, wtl_df
 
 
 def main():
     result_df = build_result_df()
-    result_df.round(3).to_csv("result_xwj_reproduction.csv", index=True)
+    result_df.round(3).to_csv("result.csv", index=True)
 
 
 if __name__ == "__main__":
-    exp_root_dir = "/data/mml/DL_bug_classification/xwj_reproduction"
+    exp_root_dir = "/data/mml/DL_bug_classification/"
     # main()
     eval_wtl()

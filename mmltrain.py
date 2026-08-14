@@ -73,7 +73,7 @@ def evaluate(model, val_loader, device):
     return accuracy, np.mean(losses), f1
 
 
-def build_dataset(dataset_split_method:str,rs:int):
+def build_dataset(dataset_split_method:str,split_seed:int):
     if dataset_split_method == "time":
         trainval_df = pd.read_csv("reconstruct_dataset/trainval_dataset.csv")
         test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
@@ -84,7 +84,7 @@ def build_dataset(dataset_split_method:str,rs:int):
                                                         list(trainval_df['LabelNum']), 
                                                         test_size=val_size, 
                                                         stratify=trainval_df['LabelNum'], 
-                                                        random_state=int(rs))
+                                                        random_state=int(split_seed))
         # test_df中构建出X_test,y_test
         X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
         return X_train,y_train,X_val,y_val,X_test,y_test,num_labels
@@ -94,20 +94,49 @@ def build_dataset(dataset_split_method:str,rs:int):
         test_size = int(df.shape[0] * 0.15)
         val_size = int(df.shape[0] * 0.15)
         # 划分出75个测试集，剩下的都是训练集
-        X_train, X_test, y_train, y_test = train_test_split(list(df['Text']), list(df['LabelNum']), test_size=test_size, stratify=df['LabelNum'], random_state=int(rs))
+        X_train, X_test, y_train, y_test = train_test_split(list(df['Text']), list(df['LabelNum']), test_size=test_size, stratify=df['LabelNum'], random_state=int(split_seed))
         # 训练集中再划分出val
-        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=val_size, stratify=y_train, random_state=int(rs))
+        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=val_size, stratify=y_train, random_state=int(split_seed))
         return X_train,y_train,X_val,y_val,X_test,y_test,num_labels
 
 
 
-def train(model_path,save_dir,rs,device,dataset_split_method):
+def build_experiment_configs(experiment_setting:str):
+    if experiment_setting == "seed_15":
+        return [
+            {
+                "exp_id": str(split_seed),
+                "split_seed": split_seed,
+                "repeat_id": None,
+            }
+            for split_seed in range(42, 42 + 15)
+        ]
+
+    if experiment_setting == "seed_5_repeat_3":
+        return [
+            {
+                "exp_id": f"{split_seed}_{repeat_id}",
+                "split_seed": split_seed,
+                "repeat_id": repeat_id,
+            }
+            for split_seed in [42, 43, 44, 45, 46]
+            for repeat_id in [1, 2, 3]
+        ]
+
+    raise ValueError("experiment_setting 只能是 seed_15 或 seed_5_repeat_3")
+
+
+def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method):
     '''
     device:"cuda:1"
     dataset_split_method:"random"|"time"
     '''
+    model_save_dir = os.path.join(save_dir, f"ft_model_{exp_id}")
     # 数据集
-    X_train,y_train,X_val,y_val,X_test,y_test,num_labels = build_dataset(dataset_split_method=dataset_split_method,rs=rs)
+    X_train,y_train,X_val,y_val,X_test,y_test,num_labels = build_dataset(
+        dataset_split_method=dataset_split_method,
+        split_seed=split_seed,
+    )
     print(f"训练集大小:{len(X_train)},验证集大小:{len(X_val)},测试集大小:{len(X_test)}")
 
     # tokenizer
@@ -178,7 +207,7 @@ def train(model_path,save_dir,rs,device,dataset_split_method):
         test_res = evaluate(model, test_loader, device) # testset eval res
 
         
-        # 只当前random seed(rs)下保存val_loss最小的模型
+        # 只保存当前 split_seed + repeat_id 下 val_loss 最小的模型
         if val_res[1] < best_loss:
             best_loss = val_res[1]
             best_info["epoch"] = epoch+1
@@ -188,8 +217,8 @@ def train(model_path,save_dir,rs,device,dataset_split_method):
             best_info["ValLoss"] = val_res[1]
             best_info["TestAcc"] = test_res[0]
             best_info["TestLoss"] = test_res[1]
-            model.save_pretrained(os.path.join(save_dir,f"ft_model_{rs}"))
-            tokenizer.save_pretrained(os.path.join(save_dir,f"ft_model_{rs}")) # save tokenizer
+            model.save_pretrained(model_save_dir)
+            tokenizer.save_pretrained(model_save_dir) # save tokenizer
         
         epoch_end_time = time.time()
         elapsed_time = int(epoch_end_time - epoch_start_time)
@@ -204,13 +233,15 @@ def train(model_path,save_dir,rs,device,dataset_split_method):
     minutes, seconds = divmod(remainder, 60)
     print(f"Best Info: Epoch {best_info['epoch']}/{num_epochs} - Acc: {best_info['TrainAcc']} - Loss: {best_info['TrainLoss']} - Val_acc: {best_info['ValAcc']} - Val_loss: {best_info['ValLoss']} - test_acc: {best_info['TestAcc']} - test_loss: {best_info['TestLoss']}")
     print(f"总训练耗时：{hours:02d}小时 {minutes:02d}分钟 {seconds:02d}秒")
-    print(f'训练模型保存在:{os.path.join(save_dir,f"ft_model_{rs}")}')
+    print(f'训练模型保存在:{model_save_dir}')
     return best_info
 
 def main():
-    device = "cuda:4"
-    repeat_num = 15 # 重复实验次数
-    dataset_split_method = "random" # random|time
+    device = "cuda:2"
+    experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
+    experiment_configs = build_experiment_configs(experiment_setting)
+    repeat_num = len(experiment_configs) # 总重复实验次数
+    dataset_split_method = "time" # random|time
     model_name = "robert" # sobert|codebert|robert
     model_path = None
     if model_name == "sobert":
@@ -221,22 +252,26 @@ def main():
         model_path = "./roberta-base"
     else:
         raise Exception("model path 参数错误")
-    testacc_res = defaultdict(float)
     save_dir = os.path.join(exp_data_dir,f"trained_models",model_name)
     os.makedirs(save_dir,exist_ok=True)
-    for rs in range(42,42+repeat_num):
-        print(f"随机种子:{rs}")
-        bestinfo = train(model_path,save_dir,rs,device,dataset_split_method)
-        test_acc = bestinfo["TestAcc"]
-        testacc_res[rs] = test_acc
-    # 保存testacc结果
-    save_file_path = os.path.join(save_dir,"test_acc.joblib")
-    joblib.dump(testacc_res,save_file_path)
-    print(f"{repeat_num}次结果保存在:{save_file_path}")
-
-
-
+    for experiment_config in experiment_configs:
+        exp_id = experiment_config["exp_id"]
+        split_seed = experiment_config["split_seed"]
+        repeat_id = experiment_config["repeat_id"]
+        print(
+            f"实验设置:{experiment_setting},"
+            f"数据集切分随机种子:{split_seed},"
+            f"重复id:{repeat_id},实验id:{exp_id}"
+        )
+        train(
+            model_path,
+            save_dir,
+            exp_id,
+            split_seed,
+            device,
+            dataset_split_method,
+        )
 
 if __name__ == "__main__":
-    exp_data_dir = "/data/mml/DL_bug_classification/xwj_reproduction"
+    exp_data_dir = "/data/mml/DL_bug_classification/time5_3"
     main()

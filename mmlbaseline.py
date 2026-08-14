@@ -55,7 +55,7 @@ def tfidf_embedding(tokenized_texts, vectorizer, fit=False):
     return vectorizer.transform(sentences)
 
 
-def build_dataset_split(dataset_split_method, rs):
+def build_dataset_split(dataset_split_method, split_seed):
     """
     按照 mmltrain.py 的 dataset_split_method 构建 train/val/test。
     dataset_split_method: random|time
@@ -69,7 +69,7 @@ def build_dataset_split(dataset_split_method, rs):
             trainval_df,
             test_size=val_size,
             stratify=trainval_df["LabelNum"],
-            random_state=int(rs),
+            random_state=int(split_seed),
         )
         X_train, y_train = list(train_df["Text"]), list(train_df["LabelNum"])
         X_val, y_val = list(val_df["Text"]), list(val_df["LabelNum"])
@@ -86,13 +86,13 @@ def build_dataset_split(dataset_split_method, rs):
             df,
             test_size=test_size,
             stratify=df["LabelNum"],
-            random_state=int(rs),
+            random_state=int(split_seed),
         )
         train_df, val_df = train_test_split(
             train_df,
             test_size=val_size,
             stratify=train_df["LabelNum"],
-            random_state=int(rs),
+            random_state=int(split_seed),
         )
         X_train, y_train = list(train_df["Text"]), list(train_df["LabelNum"])
         X_val, y_val = list(val_df["Text"]), list(val_df["LabelNum"])
@@ -102,6 +102,30 @@ def build_dataset_split(dataset_split_method, rs):
 
     raise ValueError("dataset_split_method 只能是 random 或 time")
 
+
+def build_experiment_configs(experiment_setting:str):
+    if experiment_setting == "seed_15":
+        return [
+            {
+                "exp_id": str(split_seed),
+                "split_seed": split_seed,
+                "repeat_id": None,
+            }
+            for split_seed in range(42, 42 + 15)
+        ]
+
+    if experiment_setting == "seed_5_repeat_3":
+        return [
+            {
+                "exp_id": f"{split_seed}_{repeat_id}",
+                "split_seed": split_seed,
+                "repeat_id": repeat_id,
+            }
+            for split_seed in [42, 43, 44, 45, 46]
+            for repeat_id in [1, 2, 3]
+        ]
+
+    raise ValueError("experiment_setting 只能是 seed_15 或 seed_5_repeat_3")
 
 
 def train_pred(train_vector, val_vector, test_vector, y_train, y_val, y_test, test_ids):
@@ -167,15 +191,19 @@ def train_pred(train_vector, val_vector, test_vector, y_train, y_val, y_test, te
 
     return result_dfs
 
-def baseline_method(rs, baseline_name, dataset_split_method):
+def baseline_method(split_seed, baseline_name, dataset_split_method, exp_id=None):
     '''
-    rs:训练集验证集切分随机数
+    split_seed:训练集/验证集/测试集切分随机数
     baseline_name:word2vec|tfidf
     dataset_split_method:random|time
+    exp_id:实验保存id。不传时默认等于 split_seed，兼容 seed_15 旧目录。
     '''
+    if exp_id is None:
+        exp_id = str(split_seed)
+
     X_train, y_train, X_val, y_val, X_test, y_test, test_ids = build_dataset_split(
         dataset_split_method,
-        rs,
+        split_seed,
     )
 
     print(f"训练集大小:{len(X_train)},验证集大小:{len(X_val)}, 测试集大小:{len(X_test)}")
@@ -191,7 +219,7 @@ def baseline_method(rs, baseline_name, dataset_split_method):
             window=5,
             min_count=2,
             workers=1,
-            seed=rs,
+            seed=split_seed,
         )
         train_vector = word2vec_embedding(train_tokens, word2vec_model)
         val_vector = word2vec_embedding(val_tokens, word2vec_model)
@@ -216,7 +244,7 @@ def baseline_method(rs, baseline_name, dataset_split_method):
     )
 
     # 保存
-    save_dir = os.path.join(exp_data_dir,f"trained_{baseline_name}",f"seed_{rs}")
+    save_dir = os.path.join(exp_data_dir,f"trained_{baseline_name}",f"seed_{exp_id}")
     os.makedirs(save_dir,exist_ok=True)
     for clf_name,df in result_dfs.items():
         save_file_name = clf_name+".csv"
@@ -229,12 +257,26 @@ def main():
     s_time=time.time()
     method_name = "word2vec" # tfidf|word2vec
     dataset_split_method = "time" # random|time
+    experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
+    experiment_configs = build_experiment_configs(experiment_setting)
     print(f"基线名称:{method_name}")
     print(f"数据集切分方式:{dataset_split_method}")
-    repeat_num = 15 # 重复实验次数
-    for rs in range(42,42+repeat_num):
-        print(f"随机种子:{rs}")
-        baseline_method(rs, method_name, dataset_split_method)
+    print(f"实验设置:{experiment_setting}")
+    repeat_num = len(experiment_configs) # 重复实验次数
+    for experiment_config in experiment_configs:
+        exp_id = experiment_config["exp_id"]
+        split_seed = experiment_config["split_seed"]
+        repeat_id = experiment_config["repeat_id"]
+        print(
+            f"数据集切分随机种子:{split_seed},"
+            f"重复id:{repeat_id},实验id:{exp_id}"
+        )
+        baseline_method(
+            split_seed,
+            method_name,
+            dataset_split_method,
+            exp_id=exp_id,
+        )
     e_time=time.time()
     elapsed_time = int(e_time - s_time)
     hours, remainder = divmod(elapsed_time, 3600)
@@ -246,5 +288,5 @@ def main():
 if __name__ == "__main__":
     pid = os.getpid()
     print(f"pid:{pid}")
-    exp_data_dir = "/data/mml/DL_bug_classification/"
+    exp_data_dir = "/data/mml/DL_bug_classification/time5_3"
     main()
