@@ -586,21 +586,21 @@ def eval_xwj_from_all_res():
 
 def main():
     # bert系列
-    device = "cuda:0"
-    bertname = "sobert" # sobert|codebert|robert
-    dataset_split_method = "time" # random|time
-    experiment_setting = "seed_15" # seed_15|seed_5_repeat_3
-    eval_bert(bertname, device, dataset_split_method, experiment_setting)
+    # device = "cuda:0"
+    # bertname = "robert" # sobert|codebert|robert
+    # dataset_split_method = "time" # random|time
+    experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
+    # eval_bert(bertname, device, dataset_split_method, experiment_setting)
 
-    # 传统系列
+    # 传统系列(tfidf|word2vec)
     # eval_tfidf_and_word2vec("word2vec", experiment_setting) # tfidf|word2vec
 
     # 大模型系列
-    # eval_llm("claude", experiment_setting) # chatgpt|claude
+    eval_llm("claude", experiment_setting) # chatgpt|claude
 
     # eval_xwj()
     # eval_xwj_from_all_res()
     pass
 if __name__ == "__main__":
-    exp_data_dir = "/data/mml/DL_bug_classification/"
+    exp_data_dir = "/data/mml/DL_bug_classification/time5_3" #time5_3|random_15seed|time_15seed
     main()

@@ -404,7 +404,7 @@ def main():
     # exp_data_dir = os.path.join(exp_root_dir,"xwj_reproduction")
     exp_data_dir = exp_root_dir
     dataset_split_method = "time"  # random|time
-    llm_name = "claude"  # chatgpt|claude
+    llm_name = "chatgpt"  # chatgpt|claude
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
     repeat_num = len(experiment_configs)
