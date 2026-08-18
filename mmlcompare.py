@@ -11,7 +11,8 @@ from cliffs_delta import cliffs_delta
 BASELINE_CLFS = ("LR", "DT", "RF", "SVM", "KNN")
 BERT_METHODS = ("sobert", "robert", "codebert")
 BASELINE_METHODS = ("tfidf", "word2vec")
-LLM_METHODS = ("chatgpt", "claude")
+# LLM_METHODS = ("chatgpt", "claude")
+LLM_METHODS = ("chatgpt",)
 LABEL_NUMS = tuple(range(6))
 CLASS_ID2NAME = {
     0: "model",
@@ -181,7 +182,9 @@ def eval_wtl():
     '''
     sobert_metric_lists = get_method_metric_lists("sobert")["sobert"]
     baseline_metric_lists = {}
-    for method_name in ("robert", "codebert", "tfidf", "word2vec", "chatgpt", "claude"):
+    # method_name_list = ("robert", "codebert", "tfidf", "word2vec", "chatgpt", "claude")
+    method_name_list = ("robert", "codebert", "tfidf", "word2vec", "chatgpt")
+    for method_name in method_name_list:
         baseline_metric_lists.update(get_method_metric_lists(method_name))
 
     wtl_rows = {}
@@ -203,6 +206,6 @@ def main():
 
 
 if __name__ == "__main__":
-    exp_root_dir = "/data/mml/DL_bug_classification/"
-    # main()
-    eval_wtl()
+    exp_root_dir = "/data/mml/DL_bug_classification/time5_3" # time5_3|time_15seed|random_15seed
+    main()
+    # eval_wtl()

@@ -596,7 +596,7 @@ def main():
     # eval_tfidf_and_word2vec("word2vec", experiment_setting) # tfidf|word2vec
 
     # 大模型系列
-    eval_llm("claude", experiment_setting) # chatgpt|claude
+    eval_llm("chatgpt", experiment_setting) # chatgpt|claude
 
     # eval_xwj()
     # eval_xwj_from_all_res()
