@@ -159,7 +159,7 @@ def query_chatgpt(client:OpenAI, content):
     response = client.chat.completions.create(
         model=gpt_name,
         messages=[{"role": "user", "content": content}],
-        temperature=0,
+        temperature=temperature,
         max_completion_tokens=100,
     )
     choice = response.choices[0]
@@ -175,7 +175,7 @@ def query_claude(client:anthropic.Anthropic, content):
         model=claude_name,
         messages=[{"role": "user", "content": content}],
         max_tokens=100,
-        temperature=0,
+        temperature=temperature,
     )
     raw_response = response.content[0].text or ""
     return build_response_data(raw_response)
@@ -434,5 +434,5 @@ def main():
 
 if __name__ == "__main__":
     exp_root_dir = "/data/mml/DL_bug_classification/time5_3" # time5_3|time_15seed|random_15seed
-    temperature =0.0
+    temperature =0.2
     main()

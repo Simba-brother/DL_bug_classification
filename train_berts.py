@@ -238,7 +238,7 @@ def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method):
     return best_info
 
 def main():
-    device = "cuda:2"
+    device = "cuda:3"
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
     repeat_num = len(experiment_configs) # 总重复实验次数
@@ -274,5 +274,7 @@ def main():
         )
 
 if __name__ == "__main__":
-    exp_data_dir = "/data/mml/DL_bug_classification/time5_3"
+    exp_data_dir = "/data/mml/DL_bug_classification/time5_3" # time5_3|random_15seed|time_15seed
+    pid = os.getpid()
+    print(f"PID:{pid}")
     main()

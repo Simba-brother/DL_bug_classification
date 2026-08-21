@@ -64,7 +64,8 @@ def build_dataset_split(dataset_split_method, split_seed):
         trainval_df = pd.read_csv("reconstruct_dataset/trainval_dataset.csv")
         test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
 
-        val_size = int(0.1 * trainval_df.shape[0])
+        # val_size = int(0.1 * trainval_df.shape[0])
+        val_size = test_df.shape[0]
         train_df, val_df = train_test_split(
             trainval_df,
             test_size=val_size,
@@ -288,5 +289,5 @@ def main():
 if __name__ == "__main__":
     pid = os.getpid()
     print(f"pid:{pid}")
-    exp_data_dir = "/data/mml/DL_bug_classification/time5_3"
+    exp_data_dir = "/data/mml/DL_bug_classification/time5_3" # time5_3|random_15seed|time_15seed
     main()
