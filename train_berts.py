@@ -79,7 +79,8 @@ def build_dataset(dataset_split_method:str,split_seed:int):
         test_df = pd.read_csv("reconstruct_dataset/test_dataset.csv")
         num_labels = trainval_df["LabelNum"].nunique() # 应该是6(5个DL bug,1个no DL bug)
         # 从trainval中划分出，train和val
-        val_size = int(0.1 * trainval_df.shape[0])
+        # val_size = int(0.1 * trainval_df.shape[0])
+        val_size = test_df.shape[0] # val和test数据量保持一致
         X_train, X_val, y_train, y_val = train_test_split(list(trainval_df['Text']), 
                                                         list(trainval_df['LabelNum']), 
                                                         test_size=val_size, 
@@ -91,8 +92,8 @@ def build_dataset(dataset_split_method:str,split_seed:int):
     elif dataset_split_method == 'random':
         df = pd.read_csv("dataset.csv")
         num_labels = df["LabelNum"].nunique() # 应该是6(5个DL bug,1个no DL bug)
-        test_size = int(df.shape[0] * 0.15)
-        val_size = int(df.shape[0] * 0.15)
+        test_size = int(df.shape[0] * 0.15) # test/all = 15%
+        val_size = int(df.shape[0] * 0.15) # val/all = 15%
         # 划分出75个测试集，剩下的都是训练集
         X_train, X_test, y_train, y_test = train_test_split(list(df['Text']), list(df['LabelNum']), test_size=test_size, stratify=df['LabelNum'], random_state=int(split_seed))
         # 训练集中再划分出val
