@@ -243,7 +243,7 @@ def main():
     experiment_configs = build_experiment_configs(experiment_setting)
     repeat_num = len(experiment_configs) # 总重复实验次数
     dataset_split_method = "time" # random|time
-    model_name = "robert" # sobert|codebert|robert
+    model_name = "codebert" # sobert|codebert|robert
     model_path = None
     if model_name == "sobert":
         model_path= "./model"

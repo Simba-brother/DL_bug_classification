@@ -154,7 +154,7 @@ def create_client(llm_name):
 
 def query_chatgpt(client:OpenAI, content):
     """使用已创建的 OpenAI client 完成一次独立推理。"""
-    gpt_name = "gpt-5.6-sol" # gpt-5.6-sol|gpt-5.5
+    gpt_name = "gpt-5.4" # gpt-5.6-sol|gpt-5.5|gpt-5.4
     print(f"ChatGPT model name:{gpt_name}")
     response = client.chat.completions.create(
         model=gpt_name,
