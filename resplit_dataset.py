@@ -278,6 +278,89 @@ def split_latest_90_by_create_time(
     return trainval_df, test_df
 
 
+def split_train_val_test_by_create_time(
+    test_size=90,
+    val_size=90,
+    output_dir="./reconstruct_dataset/time_tvt90",
+):
+    """
+    基于 dataset.csv 的 createTime 字段切分数据集。
+
+    createTime 最新的 test_size 条样本作为 test，
+    次新的 val_size 条样本作为 val，
+    剩余样本作为 train。
+    结果保存到 reconstruct_dataset/time/test_dataset.csv、
+    val_dataset.csv 和 train_dataset.csv。
+    """
+    df = pd.read_csv(dataset_csv_path)
+    required_columns = {"createTime", "Label"}
+    missing_columns = required_columns - set(df.columns)
+    if missing_columns:
+        raise ValueError(f"dataset.csv 缺少字段：{sorted(missing_columns)}")
+
+    if len(df) <= test_size + val_size:
+        raise ValueError(
+            f"dataset.csv 样本数必须大于 test_size+val_size="
+            f"{test_size + val_size}，当前样本数：{len(df)}"
+        )
+
+    df["createTime"] = pd.to_datetime(
+        df["createTime"],
+        errors="coerce",
+    )
+    invalid_time_mask = df["createTime"].isna()
+    if invalid_time_mask.any():
+        invalid_ids = (
+            df.loc[invalid_time_mask, "Id"].tolist()
+            if "Id" in df.columns
+            else df.index[invalid_time_mask].tolist()
+        )
+        raise ValueError(
+            f"有 {invalid_time_mask.sum()} 条 createTime 无法解析，"
+            f"对应 Id/行号：{invalid_ids}"
+        )
+
+    sort_columns = ["createTime"]
+    ascending = [False]
+    if "Id" in df.columns:
+        sort_columns.append("Id")
+        ascending.append(True)
+
+    sorted_df = df.sort_values(sort_columns, ascending=ascending)
+    test_df = sorted_df.head(test_size).copy()
+    val_df = sorted_df.iloc[test_size:test_size + val_size].copy()
+    train_df = sorted_df.iloc[test_size + val_size:].copy()
+
+    # 保存时按时间升序排列，便于人工检查时间范围。
+    test_df.sort_values("createTime", inplace=True)
+    val_df.sort_values("createTime", inplace=True)
+    train_df.sort_values("createTime", inplace=True)
+
+    os.makedirs(output_dir, exist_ok=True)
+    test_csv_path = os.path.join(output_dir, "test_dataset.csv")
+    val_csv_path = os.path.join(output_dir, "val_dataset.csv")
+    train_csv_path = os.path.join(output_dir, "train_dataset.csv")
+    test_df.to_csv(test_csv_path, index=False)
+    val_df.to_csv(val_csv_path, index=False)
+    train_df.to_csv(train_csv_path, index=False)
+
+    for name, part_df, csv_path in (
+        ("test", test_df, test_csv_path),
+        ("val", val_df, val_csv_path),
+        ("train", train_df, train_csv_path),
+    ):
+        label_counts = part_df["Label"].value_counts().sort_index()
+        print(f"已生成 {csv_path}")
+        print(f"{name} 集样本数：{len(part_df)}")
+        print(
+            f"{name} 集 createTime 范围："
+            f"{part_df['createTime'].min()} ~ {part_df['createTime'].max()}"
+        )
+        print(f"{name} 集各 Label 数量：{label_counts.to_dict()}")
+
+    return train_df, val_df, test_df
+
+
 
 def main():
     stage = 0 # 贯穿整个流程
@@ -362,7 +445,8 @@ def split_nocode_dataset():
 
 if __name__ == "__main__":
     dataset_csv_path = "./dataset.csv"
-    split_latest_90_by_create_time()
+    # split_latest_90_by_create_time()
+    split_train_val_test_by_create_time()
 
     # test_dataset_csv_path = "./reconstruct_dataset/test_dataset.csv"
     # trainval_dataset_csv_path = "./reconstruct_dataset/trainval_dataset.csv"

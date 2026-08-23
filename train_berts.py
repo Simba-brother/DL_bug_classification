@@ -89,6 +89,18 @@ def build_dataset(dataset_split_method:str,split_seed:int):
         # test_df中构建出X_test,y_test
         X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
         return X_train,y_train,X_val,y_val,X_test,y_test,num_labels
+    elif dataset_split_method == "time_tvt":
+        print("train|val|test严格按照时间切分")
+        train_df = pd.read_csv("reconstruct_dataset/time_tvt/train_dataset.csv")
+        val_df = pd.read_csv("reconstruct_dataset/time_tvt/val_dataset.csv")
+        test_df = pd.read_csv("reconstruct_dataset/time_tvt/test_dataset.csv")
+        num_labels = train_df["LabelNum"].nunique() # 应该是6(5个DL bug,1个no DL bug)
+        print(f"训练集中分类数:{num_labels}")
+        X_train, y_train = list(train_df["Text"]), list(train_df["LabelNum"])
+        X_val, y_val = list(val_df["Text"]), list(val_df["LabelNum"])
+        X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
+        return X_train,y_train,X_val,y_val,X_test,y_test,num_labels
+
     elif dataset_split_method == 'random':
         df = pd.read_csv("dataset.csv")
         num_labels = df["LabelNum"].nunique() # 应该是6(5个DL bug,1个no DL bug)
@@ -99,6 +111,8 @@ def build_dataset(dataset_split_method:str,split_seed:int):
         # 训练集中再划分出val
         X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=val_size, stratify=y_train, random_state=int(split_seed))
         return X_train,y_train,X_val,y_val,X_test,y_test,num_labels
+    else:
+        raise Exception("dataset_split_method 参数传递错误")
 
 
 
@@ -238,12 +252,13 @@ def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method):
     return best_info
 
 def main():
-    device = "cuda:3"
+    device = "cuda:2"
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
     repeat_num = len(experiment_configs) # 总重复实验次数
-    dataset_split_method = "time" # random|time
-    model_name = "codebert" # sobert|codebert|robert
+    print(f"实验重复次数:{repeat_num}")
+    dataset_split_method = "time_tvt" # random|time|time_tvt
+    model_name = "robert" # sobert|codebert|robert
     model_path = None
     if model_name == "sobert":
         model_path= "./model"

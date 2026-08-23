@@ -60,6 +60,8 @@ def build_test_df(dataset_split_method:str, rs:int) -> pd.DataFrame:
     """
     if dataset_split_method == "time":
         return pd.read_csv("reconstruct_dataset/test_dataset.csv").reset_index(drop=True)
+    if dataset_split_method == "time_tvt":
+        return pd.read_csv("reconstruct_dataset/time_tvt/test_dataset.csv").reset_index(drop=True)
 
     if dataset_split_method == "random":
         df = pd.read_csv("dataset.csv")
@@ -588,15 +590,15 @@ def main():
     # bert系列
     # device = "cuda:0"
     # bertname = "robert" # sobert|codebert|robert
-    # dataset_split_method = "time" # random|time
+    # dataset_split_method = "time_tvt" # random|time|time_tvt
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     # eval_bert(bertname, device, dataset_split_method, experiment_setting)
 
     # 传统系列(tfidf|word2vec)
-    # eval_tfidf_and_word2vec("word2vec", experiment_setting) # tfidf|word2vec
+    eval_tfidf_and_word2vec("word2vec", experiment_setting) # tfidf|word2vec
 
     # 大模型系列
-    eval_llm("chatgpt", experiment_setting) # chatgpt|claude
+    # eval_llm("claude", experiment_setting) # chatgpt|claude
 
     # eval_xwj()
     # eval_xwj_from_all_res()

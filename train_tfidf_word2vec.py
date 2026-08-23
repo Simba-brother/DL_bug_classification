@@ -77,8 +77,21 @@ def build_dataset_split(dataset_split_method, split_seed):
         X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
         test_ids = list(test_df["Id"])
         return X_train, y_train, X_val, y_val, X_test, y_test, test_ids
+    
+    elif dataset_split_method == "time_tvt":
+        print("train|val|test严格按照时间切分")
+        train_df = pd.read_csv("reconstruct_dataset/time_tvt/train_dataset.csv")
+        val_df = pd.read_csv("reconstruct_dataset/time_tvt/val_dataset.csv")
+        test_df = pd.read_csv("reconstruct_dataset/time_tvt/test_dataset.csv")
+        num_labels = train_df["LabelNum"].nunique() # 应该是6(5个DL bug,1个no DL bug)
+        print(f"训练集中分类数:{num_labels}")
+        X_train, y_train = list(train_df["Text"]), list(train_df["LabelNum"])
+        X_val, y_val = list(val_df["Text"]), list(val_df["LabelNum"])
+        X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
+        test_ids = list(test_df["Id"])
+        return X_train,y_train,X_val,y_val,X_test,y_test,test_ids
 
-    if dataset_split_method == "random":
+    elif dataset_split_method == "random":
         df = pd.read_csv("dataset.csv")
         test_size = int(df.shape[0] * 0.15)
         val_size = int(df.shape[0] * 0.15)
@@ -257,13 +270,14 @@ def baseline_method(split_seed, baseline_name, dataset_split_method, exp_id=None
 def main():
     s_time=time.time()
     method_name = "word2vec" # tfidf|word2vec
-    dataset_split_method = "time" # random|time
+    dataset_split_method = "time_tvt" # random|time|time_tvt
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
     print(f"基线名称:{method_name}")
     print(f"数据集切分方式:{dataset_split_method}")
     print(f"实验设置:{experiment_setting}")
     repeat_num = len(experiment_configs) # 重复实验次数
+    print(f"实验重复次数:{repeat_num}")
     for experiment_config in experiment_configs:
         exp_id = experiment_config["exp_id"]
         split_seed = experiment_config["split_seed"]
