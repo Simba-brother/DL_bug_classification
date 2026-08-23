@@ -154,7 +154,7 @@ def create_client(llm_name):
 
 def query_chatgpt(client:OpenAI, content):
     """使用已创建的 OpenAI client 完成一次独立推理。"""
-    gpt_name = "gpt-5.4" # gpt-5.6-sol|gpt-5.5|gpt-5.4
+    gpt_name = "gpt-5.4" # gpt-5.6-sol|gpt-5.5|gpt-5.4(比sobert差一些)
     print(f"ChatGPT model name:{gpt_name}")
     response = client.chat.completions.create(
         model=gpt_name,
@@ -169,7 +169,7 @@ def query_chatgpt(client:OpenAI, content):
 
 def query_claude(client:anthropic.Anthropic, content):
     """使用已创建的 Anthropic client 完成一次独立推理。"""
-    claude_name = "claude-opus-4-7" # claude-opus-4-7|claude-opus-4-6
+    claude_name = "claude-sonnet-4-6" # claude-opus-4-7|claude-opus-4-6|claude-sonnet-4-6
     print(f"Claude model name:{claude_name}")
     response = client.messages.create(
         model=claude_name,
@@ -404,7 +404,7 @@ def main():
     # exp_data_dir = os.path.join(exp_root_dir,"xwj_reproduction")
     exp_data_dir = exp_root_dir
     dataset_split_method = "time"  # random|time
-    llm_name = "chatgpt"  # chatgpt|claude
+    llm_name = "claude"  # chatgpt|claude
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
     repeat_num = len(experiment_configs)
