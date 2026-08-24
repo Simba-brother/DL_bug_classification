@@ -206,6 +206,6 @@ def main():
 
 
 if __name__ == "__main__":
-    exp_root_dir = "/data/mml/DL_bug_classification/time5_3/" # time5_3|time_15seed|random_15seed
-    # main()
-    eval_wtl()
+    exp_root_dir = "/data/mml/DL_bug_classification/exp/"
+    main()
+    # eval_wtl()

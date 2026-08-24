@@ -595,7 +595,7 @@ def main():
     # eval_bert(bertname, device, dataset_split_method, experiment_setting)
 
     # 传统系列(tfidf|word2vec)
-    eval_tfidf_and_word2vec("word2vec", experiment_setting) # tfidf|word2vec
+    # eval_tfidf_and_word2vec("word2vec", experiment_setting) # tfidf|word2vec
 
     # 大模型系列
     # eval_llm("claude", experiment_setting) # chatgpt|claude
@@ -604,5 +604,5 @@ def main():
     # eval_xwj_from_all_res()
     pass
 if __name__ == "__main__":
-    exp_data_dir = "/data/mml/DL_bug_classification/time5_3" #time5_3|random_15seed|time_15seed
+    exp_data_dir = "/data/mml/DL_bug_classification/exp" # time5_3|random_15seed|time_15seed
     main()
