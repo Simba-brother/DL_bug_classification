@@ -92,7 +92,10 @@ def build_dataset_split(dataset_split_method, split_seed):
         return X_train,y_train,X_val,y_val,X_test,y_test,test_ids
 
     elif dataset_split_method == "random":
-        df = pd.read_csv("dataset.csv")
+        if NOCODE is True:
+            df = pd.read_csv("dataset_nocode.csv")
+        else:
+            df = pd.read_csv("dataset.csv")
         test_size = int(df.shape[0] * 0.15)
         val_size = int(df.shape[0] * 0.15)
 
@@ -270,7 +273,7 @@ def baseline_method(split_seed, baseline_name, dataset_split_method, exp_id=None
 def main():
     s_time=time.time()
     method_name = "word2vec" # tfidf|word2vec
-    dataset_split_method = "time_tvt" # random|time|time_tvt
+    dataset_split_method = "random" # random|time|time_tvt(不用)
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
     print(f"基线名称:{method_name}")
@@ -303,5 +306,7 @@ def main():
 if __name__ == "__main__":
     pid = os.getpid()
     print(f"pid:{pid}")
-    exp_data_dir = "/data/mml/DL_bug_classification/time5_3" # time5_3|random_15seed|time_15seed
+    exp_data_dir = "/data/mml/DL_bug_classification/exp_nocode"
+    os.makedirs(exp_data_dir,exist_ok=True)
+    NOCODE = True
     main()

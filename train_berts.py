@@ -102,7 +102,10 @@ def build_dataset(dataset_split_method:str,split_seed:int):
         return X_train,y_train,X_val,y_val,X_test,y_test,num_labels
 
     elif dataset_split_method == 'random':
-        df = pd.read_csv("dataset.csv")
+        if NOCODE is True:
+            df = pd.read_csv("dataset_nocode.csv")
+        else:
+            df = pd.read_csv("dataset.csv")
         num_labels = df["LabelNum"].nunique() # 应该是6(5个DL bug,1个no DL bug)
         test_size = int(df.shape[0] * 0.15) # test/all = 15%
         val_size = int(df.shape[0] * 0.15) # val/all = 15%
@@ -252,12 +255,12 @@ def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method):
     return best_info
 
 def main():
-    device = "cuda:2"
+    device = "cuda:4"
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
     repeat_num = len(experiment_configs) # 总重复实验次数
     print(f"实验重复次数:{repeat_num}")
-    dataset_split_method = "time_tvt" # random|time|time_tvt
+    dataset_split_method = "random" # random|time|time_tvt(不用)
     model_name = "robert" # sobert|codebert|robert
     model_path = None
     if model_name == "sobert":
@@ -289,7 +292,13 @@ def main():
         )
 
 if __name__ == "__main__":
-    exp_data_dir = "/data/mml/DL_bug_classification/time5_3" # time5_3|random_15seed|time_15seed
+    exp_data_dir = "/data/mml/DL_bug_classification"
+    os.makedirs(exp_data_dir,exist_ok=True)
+    NOCODE = True
+    if NOCODE is False:
+        exp_data_dir = os.path.join(exp_data_dir,"exp")
+    else:
+        exp_data_dir = os.path.join(exp_data_dir,"exp_nocode")
     pid = os.getpid()
     print(f"PID:{pid}")
     main()

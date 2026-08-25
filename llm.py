@@ -360,7 +360,10 @@ def build_testset(dataset_split_method:str, rs:int) -> pd.DataFrame:
         return pd.read_csv("reconstruct_dataset/test_dataset.csv").reset_index(drop=True)
 
     if dataset_split_method == "random":
-        df = pd.read_csv("dataset.csv")
+        if NOCODE is True:
+            df = pd.read_csv("dataset_nocode.csv")
+        else:
+            df = pd.read_csv("dataset.csv")
         test_size = int(df.shape[0] * 0.15)
         _, test_df = train_test_split(
             df,
@@ -403,7 +406,7 @@ def main():
     start_time = time.monotonic()
     # exp_data_dir = os.path.join(exp_root_dir,"xwj_reproduction")
     exp_data_dir = exp_root_dir
-    dataset_split_method = "time"  # random|time
+    dataset_split_method = "random" # random|time
     llm_name = "claude"  # chatgpt|claude
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
@@ -433,6 +436,8 @@ def main():
             )
 
 if __name__ == "__main__":
-    exp_root_dir = "/data/mml/DL_bug_classification/time5_3" # time5_3|time_15seed|random_15seed
+    exp_root_dir = "/data/mml/DL_bug_classification/exp_nocode"
+    os.makedirs(exp_root_dir,exist_ok=True)
+    NOCODE = True
     temperature =0.2
     main()
