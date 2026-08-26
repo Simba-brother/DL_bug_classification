@@ -2,7 +2,7 @@
 基于时间对dataset.csv进行切分出train/eval/test
 '''
 import os
-
+from sklearn.model_selection import train_test_split
 import pandas as pd
 
 def choose_split_time(
@@ -441,6 +441,44 @@ def split_nocode_dataset():
     print(f"nocode test 集样本数：{len(nocode_test_df)}")
     print(f"已生成 {nocode_trainval_dataset_csv_path}")
     print(f"nocode trainval 集样本数：{len(nocode_trainval_df)}")
+
+
+def pre_split(split_mode:str):
+    df = pd.read_csv('dataset.csv')
+    test_size = df.shape[0] * 0.15
+    val_size = test_size
+    if split_mode == "random_5-3":
+        output_dir = "./random_5-3"
+        split_seeds = list(range(42,42+5)) # [42-46]
+        repeats = 3
+        id = 1
+        for seed in split_seeds:
+            for repeat in range(repeats):
+                
+                output_dir = os.path.join(output_dir,f"{id}")
+                os.makedirs(output_dir,exist_ok=True)
+
+
+                Id_train, X_val, y_train, y_val = train_test_split(list(df['Id']), 
+                                                                    list(df['LabelNum']), 
+                                                                    test_size=test_size, 
+                                                                    stratify=df['LabelNum'], 
+                                                                    random_state=seed)
+
+    elif split_mode == "random_15":
+        split_seeds = list(range(42,42+15)) # [42-56]
+    elif split_mode == "time_5-3":
+        split_seeds = list(range(42,42+5)) # [42-46]
+        repeat = 3
+    elif split_mode == "time_15":
+        split_seeds = list(range(42,42+15)) # [42-56]
+    elif split_mode == 'time_tvt':
+        test_size = 90
+        val_size = 90
+        
+
+
+
 
 
 if __name__ == "__main__":

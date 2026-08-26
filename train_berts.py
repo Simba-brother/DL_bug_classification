@@ -255,13 +255,13 @@ def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method):
     return best_info
 
 def main():
-    device = "cuda:5"
+    device = "cuda:6"
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
     repeat_num = len(experiment_configs) # 总重复实验次数
     print(f"实验重复次数:{repeat_num}")
     dataset_split_method = "random" # random|time|time_tvt(不用)
-    model_name = "codebert" # sobert|codebert|robert
+    model_name = "robert" # sobert|codebert|robert
     model_path = None
     if model_name == "sobert":
         model_path= "./model"

@@ -137,8 +137,8 @@ def build_code_comparison_df(
 
 
 def main():
-    withcode_df = pd.read_csv(os.path.join(exp_root_dir,"exp/sobert_res/all_res.csv"))
-    nocode_df = pd.read_csv(os.path.join(exp_root_dir,"exp_nocode/sobert_res/all_res.csv"))
+    withcode_df = pd.read_csv(os.path.join(exp_root_dir,"exp/robert_res/all_res.csv"))
+    nocode_df = pd.read_csv(os.path.join(exp_root_dir,"exp_nocode/robert_res/all_res.csv"))
     comparison_df = build_code_comparison_df(withcode_df, nocode_df)
 
     save_path = "result_code_vs_nocode.csv"
