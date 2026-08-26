@@ -459,10 +459,16 @@ def pre_split(split_mode:str):
                 os.makedirs(output_dir,exist_ok=True)
 
 
-                Id_train, X_val, y_train, y_val = train_test_split(list(df['Id']), 
-                                                                    list(df['LabelNum']), 
-                                                                    test_size=test_size, 
-                                                                    stratify=df['LabelNum'], 
+                Id_trainval, Id_test, y_trainval, y_test = train_test_split(list(df['Id']),
+                                                                    list(df['LabelNum']),
+                                                                    test_size=test_size,
+                                                                    stratify=df['LabelNum'],
+                                                                    random_state=seed)
+                
+                Id_train, Id_val, y_train, y_val = train_test_split(Id_trainval,
+                                                                    y_trainval,
+                                                                    test_size=val_size, 
+                                                                    stratify=y_train, 
                                                                     random_state=seed)
 
     elif split_mode == "random_15":
