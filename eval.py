@@ -64,7 +64,10 @@ def build_test_df(dataset_split_method:str, rs:int) -> pd.DataFrame:
         return pd.read_csv("reconstruct_dataset/time_tvt/test_dataset.csv").reset_index(drop=True)
 
     if dataset_split_method == "random":
-        df = pd.read_csv("dataset.csv")
+        if NOCODE is True:
+            df = pd.read_csv("dataset_nocode.csv")
+        else:
+            df = pd.read_csv("dataset.csv")
         test_size = int(df.shape[0] * 0.15)
         _, test_df = train_test_split(
             df,
@@ -588,11 +591,11 @@ def eval_xwj_from_all_res():
 
 def main():
     # bert系列
-    # device = "cuda:0"
-    # bertname = "robert" # sobert|codebert|robert
-    # dataset_split_method = "time_tvt" # random|time|time_tvt
+    device = "cuda:0"
+    bertname = "sobert" # sobert|codebert|robert
+    dataset_split_method = "random" # random|time|time_tvt(不用了)
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
-    # eval_bert(bertname, device, dataset_split_method, experiment_setting)
+    eval_bert(bertname, device, dataset_split_method, experiment_setting)
 
     # 传统系列(tfidf|word2vec)
     # eval_tfidf_and_word2vec("word2vec", experiment_setting) # tfidf|word2vec
@@ -604,5 +607,10 @@ def main():
     # eval_xwj_from_all_res()
     pass
 if __name__ == "__main__":
-    exp_data_dir = "/data/mml/DL_bug_classification/exp" # time5_3|random_15seed|time_15seed
+    NOCODE = True
+    exp_data_dir = "/data/mml/DL_bug_classification"
+    if NOCODE is True:
+        exp_data_dir = os.path.join(exp_data_dir,"exp_nocode")
+    else:
+        exp_data_dir = os.path.join(exp_data_dir,"exp")
     main()
