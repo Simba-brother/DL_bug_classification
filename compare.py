@@ -169,7 +169,7 @@ def wtl(our_data_list,baseline_data_list):
     if p_value < 0.05 and delta > 0.147:
         # ours和baseline有差异，且我们的值偏大
         return 'W'
-    elif p_value < 0.05 and delta < 0.147:
+    elif p_value < 0.05 and delta < -0.147:
         # ours和baseline有差异，且我们的值偏小
         return 'L'
     else:
@@ -207,5 +207,5 @@ def main():
 
 if __name__ == "__main__":
     exp_root_dir = "/data/mml/DL_bug_classification/exp/"
-    main()
-    # eval_wtl()
+    # main()
+    eval_wtl()
