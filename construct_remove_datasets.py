@@ -11,7 +11,7 @@ from itertools import combinations
 
 
 def tokenize_words(text:str, stop_words:set[str]) -> list[str]:
-    tokens = nltk.word_tokenize(text)
+    tokens = nltk.word_tokenize(text) # 分词
 
     return [
         token.lower()
@@ -20,8 +20,14 @@ def tokenize_words(text:str, stop_words:set[str]) -> list[str]:
     ]
 
 def collect_words(text_list:list[str]) -> set[str]:
+    '''
+    基于帖子list，得到分词set
+    '''
+    # 所有帖子的文本
     all_text = " ".join(text_list)
+    # 默认停用词
     stop_words = set(nltk.corpus.stopwords.words("english"))
+    # 基于文本和默认停用词来分词
     words = tokenize_words(all_text, stop_words)
     return set(words)
 
@@ -145,11 +151,16 @@ def save_remove_word_dfs(remove_word2df:dict[str, pd.DataFrame], output_dir:Path
         df.to_csv(csv_path, index=False)
 
 
-def get_remove_word_datasets():
-    test_df = pd.read_csv(test_dataset_csv_path)
-    dl_bug_df = test_df[test_df["Label"] != "Others"].reset_index(drop=True) # 如果不写 drop=True，旧索引会变成一列叫 index 的新列
+def get_remove_word_datasets(dataset_csv):
+    df = pd.read_csv(dataset_csv)
+    # 只考虑DL bug，不考虑 Others
+    dl_bug_df = df[df["Label"] != "Others"].reset_index(drop=True) # 如果不写 drop=True，旧索引会变成一列叫 index 的新列
+    # 提取出所有的文本
     text_list = list(dl_bug_df["Text"])
+    # 收集文本中的所有词
     words = collect_words(text_list)
+    print(f"待剥离的词的数量:{len(words)}")
+    # 得到每个删除词对应的df
     remove_word2df = remove_words(dl_bug_df,words)
     save_dir = os.path.join(exp_root_dir,"remove_word")
     os.makedirs(save_dir,exist_ok=True)
@@ -191,6 +202,8 @@ def get_remove_combineword_dataset():
 if __name__ == "__main__":
     exp_root_dir = "/data/mml/DL_bug_classification"
     test_dataset_csv_path = "./reconstruct_dataset/test_dataset.csv"
+    # 600数据集
+    dataset_csv_path = "./dataset.csv"
     
-    # get_remove_word_datasets()
+    get_remove_word_datasets(dataset_csv_path)
     # get_remove_combineword_dataset()

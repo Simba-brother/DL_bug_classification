@@ -591,11 +591,11 @@ def eval_xwj_from_all_res():
 
 def main():
     # bert系列
-    # device = "cuda:4"
-    # bertname = "robert" # sobert|codebert|robert
-    # dataset_split_method = "random" # random|time|time_tvt(不用了)
+    device = "cuda:5"
+    bertname = "sobert" # sobert|codebert|robert
+    dataset_split_method = "random" # random|time|time_tvt(不用了)
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
-    # eval_bert(bertname, device, dataset_split_method, experiment_setting)
+    eval_bert(bertname, device, dataset_split_method, experiment_setting)
 
     # 传统系列(tfidf|word2vec)
     # eval_tfidf_and_word2vec("word2vec", experiment_setting) # tfidf|word2vec
