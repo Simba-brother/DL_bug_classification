@@ -1,6 +1,7 @@
 from cliffs_delta import cliffs_delta
 from scipy import stats
 import os
+import nltk
 
 def test():
     ours = [1,4,4,4,6,6,7,9,10,10]
@@ -24,8 +25,13 @@ def test2():
     data = [4,2,5,1]
     data.sort()
     return data
+def test3():
+    swords = nltk.corpus.stopwords.words("english")
+    print()
+def test4():
+    print(["1 2 3","4 5 6"])
+
 if __name__ == '__main__':
     # test()
     # get_csv_files("/data/mml/DL_bug_classification/remove_word")
-    a = test2()
-    print(a)
+    test4()
