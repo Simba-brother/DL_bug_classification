@@ -153,7 +153,7 @@ def infer_trained_model(trained_model_dir:str, df:pd.DataFrame, device='cuda:0')
     model.to(device)
 
     X_test, y_test = list(df["Text"]), list(df["LabelNum"])
-    print(f"测试集大小:{len(X_test)}")
+    # print(f"测试集大小:{len(X_test)}")
     test_loader = DataLoader(TextDataset(X_test, y_test, tokenizer), batch_size=32, shuffle=False)
 
     model.eval()
