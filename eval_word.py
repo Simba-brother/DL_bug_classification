@@ -181,7 +181,7 @@ def eval_single_word():
 
 
 def eval_combinword():
-    stage = 1
+    stage = 3
     if stage == 1:
         '''
         阶段1：获得预测结果
@@ -270,7 +270,6 @@ def eval_combinword():
         rm_f1_df = pd.DataFrame(rm_f1)
         rm_f1_df.to_csv(os.path.join(save_dir,"rm.csv"),index=False)
         print(f"F1-score结果保存在:{save_dir}")
-
     if stage == 3:
         '''
         阶段3：基于阶段2的指标,统计论文结果
@@ -306,10 +305,10 @@ def eval_combinword():
                 sorted_words.append(combinId2words[id])
             # assert len(sorted_words) > 10, "decrease word少于10个"
             print(f"{col}|Increase Count:{len(increase_dict)},Decrease Count:{len(decrease_dict)},Max:{max_v},Min:{min_v},Original:{origin_f1}")
-            if len(sorted_words) < 10:
-                print(f"Top10(<10) decrease:{sorted_words}")
+            if len(sorted_words) < 5:
+                print(f"Top5(<5) decrease:{sorted_words}")
             else:
-                print(f"Top10 decrease:{sorted_words[:10]}")
+                print(f"Top5 decrease:{sorted_words[:5]}")
             print("="*30)
 
 

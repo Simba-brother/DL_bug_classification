@@ -20,11 +20,12 @@ import joblib
 LABEL_NUMS = list(range(6))
 
 class TextDataset(Dataset):
-    def __init__(self, texts, labels, tokenizer, max_length=512):
+    def __init__(self, texts, labels, tokenizer, max_length=512,truncation_mode="head"):
         self.texts = texts
         self.labels = labels
         self.tokenizer = tokenizer
         self.max_length = max_length # Maximum length of each sentence(text)
+        self.truncation_mode = truncation_mode
 
     def __len__(self):
         return len(self.texts) # Number of sentences(text) in the dataset.
@@ -32,26 +33,58 @@ class TextDataset(Dataset):
     def __getitem__(self, idx):
         text = self.texts[idx] # Obtain the text based on the idx.
         label = self.labels[idx] # Obtain the label based on the idx.
-        # Tokenize the text.
-        inputs = self.tokenizer(
-            str(text),
-            max_length=self.max_length,
-            padding='max_length',
-            truncation=True,
-            return_tensors='pt'
-        )
+        if self.truncation_mode == "head_tail":
+            token_ids = self.tokenizer.encode(
+                text,
+                add_special_tokens=False,
+                truncation=False
+            )
+            # 如果模型最大长度是 512，要给 [CLS]/[SEP] 留位置
+            special_tokens_count = self.tokenizer.num_special_tokens_to_add(pair=False)
+            content_max_len = self.max_length - special_tokens_count
 
-        '''
-        随后，DataLoader 会把多条样本组合成一个批次。假设 batch_size=32，结果大致为：
-        batch['input_ids'].shape       # [32, 512]
-        batch['attention_mask'].shape  # [32, 512]
-        batch['labels'].shape          # [32]
-        '''
-        return {
-            'input_ids': inputs['input_ids'].squeeze(), # tensor([[101, 2769, 4638, 102, 0]])，每个token在词表中的编号.这里的 .squeeze() 用来去掉 tokenizer 添加的大小为1的批次维度：
-            'attention_mask': inputs['attention_mask'].squeeze(), # 1 表示真实 token，0 表示补齐的 padding。
-            'labels': torch.tensor(label) # 类别标签
-        }
+            head_len = content_max_len // 2
+            tail_len = content_max_len - head_len
+
+            if len(token_ids) > content_max_len:
+                token_ids = token_ids[:head_len] + token_ids[-tail_len:]
+
+            inputs = self.tokenizer.prepare_for_model(
+                token_ids,
+                add_special_tokens=True,
+                max_length=self.max_length,
+                padding='max_length',
+                truncation=True,
+                return_tensors='pt'
+            )
+            return {
+                'input_ids': inputs['input_ids'].squeeze(), # tensor([[101, 2769, 4638, 102, 0]])，每个token在词表中的编号.这里的 .squeeze() 用来去掉 tokenizer 添加的大小为1的批次维度：
+                'attention_mask': inputs['attention_mask'].squeeze(), # 1 表示真实 token，0 表示补齐的 padding。
+                'labels': torch.tensor(label) # 类别标签
+            }
+        elif self.truncation_mode == "head":
+            # Tokenize the text.
+            inputs = self.tokenizer(
+                str(text),
+                max_length=self.max_length,
+                padding='max_length',
+                truncation=True,
+                return_tensors='pt'
+            )
+
+            '''
+            随后，DataLoader 会把多条样本组合成一个批次。假设 batch_size=32，结果大致为：
+            batch['input_ids'].shape       # [32, 512]
+            batch['attention_mask'].shape  # [32, 512]
+            batch['labels'].shape          # [32]
+            '''
+            return {
+                'input_ids': inputs['input_ids'].squeeze(), # tensor([[101, 2769, 4638, 102, 0]])，每个token在词表中的编号.这里的 .squeeze() 用来去掉 tokenizer 添加的大小为1的批次维度：
+                'attention_mask': inputs['attention_mask'].squeeze(), # 1 表示真实 token，0 表示补齐的 padding。
+                'labels': torch.tensor(label) # 类别标签
+            }
+        else:
+            raise Exception("truncation_mode参数传入错误")
 
 def build_test_df(dataset_split_method:str, rs:int) -> pd.DataFrame:
     """
@@ -154,8 +187,9 @@ def infer_trained_model(trained_model_dir:str, df:pd.DataFrame, device='cuda:0')
 
     X_test, y_test = list(df["Text"]), list(df["LabelNum"])
     # print(f"测试集大小:{len(X_test)}")
-    test_loader = DataLoader(TextDataset(X_test, y_test, tokenizer), batch_size=32, shuffle=False)
-
+    truncation_mode = "head_tail"
+    print(f"truncation_mode:{truncation_mode}")
+    test_loader = DataLoader(TextDataset(X_test, y_test, tokenizer,truncation_mode=truncation_mode), batch_size=32, shuffle=False)
     model.eval()
 
     p_labels = []
@@ -385,7 +419,7 @@ def eval_bert(model_name:str,device:str,dataset_split_method:str,experiment_sett
     experiment_setting:seed_15|seed_5_repeat_3
     '''
     assert model_name in ["sobert","codebert","robert"], "model_name 传参错误"
-    save_dir = os.path.join(exp_data_dir,f"{model_name}_res")
+    save_dir = os.path.join(exp_data_dir,f"{model_name}_res_truncHeadTail")
     os.makedirs(save_dir,exist_ok=True)
     # save_file_name = "res.joblib"
     # save_path = os.path.join(save_dir,save_file_name)
@@ -591,7 +625,7 @@ def eval_xwj_from_all_res():
 
 def main():
     # bert系列
-    device = "cuda:5"
+    device = "cuda:1"
     bertname = "sobert" # sobert|codebert|robert
     dataset_split_method = "random" # random|time|time_tvt(不用了)
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
@@ -607,10 +641,11 @@ def main():
     # eval_xwj_from_all_res()
     pass
 if __name__ == "__main__":
-    NOCODE = True
+    NOCODE = False
     exp_data_dir = "/data/mml/DL_bug_classification"
     if NOCODE is True:
         exp_data_dir = os.path.join(exp_data_dir,"exp_nocode")
     else:
         exp_data_dir = os.path.join(exp_data_dir,"exp")
+    os.makedirs(exp_data_dir,exist_ok=True)
     main()

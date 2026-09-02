@@ -2,6 +2,8 @@ from cliffs_delta import cliffs_delta
 from scipy import stats
 import os
 import nltk
+from alive_progress import alive_bar
+import time
 
 def test():
     ours = [1,4,4,4,6,6,7,9,10,10]
@@ -28,10 +30,20 @@ def test2():
 def test3():
     swords = nltk.corpus.stopwords.words("english")
     print()
+
 def test4():
     print(["1 2 3","4 5 6"])
+
+def test5():
+    n = 10000
+
+    with alive_bar(n) as bar:
+        for i in range(n):
+            # 你的循环任务
+            time.sleep(0.001)
+            bar()
 
 if __name__ == '__main__':
     # test()
     # get_csv_files("/data/mml/DL_bug_classification/remove_word")
-    test4()
+    test5()
