@@ -6,6 +6,34 @@ from transformers import AutoTokenizer, AutoModel, AutoModelForSequenceClassific
 from eval import build_all_res_row_from_infer_df
 from compare import wtl
 
+
+def selectLongIds(dataset_df):
+    longIds = []
+    seed = 42
+    repeat = 1
+    trained_model_dir = os.path.join(exp_root_dir,"exp","trained_models","sobert",f"ft_model_{seed}_{repeat}")
+    tokenizer = AutoTokenizer.from_pretrained(trained_model_dir, use_fast=True)
+    for row_id,row in dataset_df.iterrows():
+        Id = row['Id']
+        text = row['Text']
+        token_ids = tokenizer.encode(text,add_special_tokens=False,truncation=False)
+        if len(token_ids) > 510: # 要给两个特殊token留地方
+            longIds.append(Id)
+    return longIds
+
+
+def print_distribution(df:pd.DataFrame,all_long_ids:list):
+    print(f"数据集总数量:{df.shape[0]}")
+    print("数据集类别数量分布:")
+    print(df["True"].value_counts().sort_index())
+    selected_ids = set(df["Id"]) & set(all_long_ids)
+    print(f"测试数据集(>512)数量:{len(selected_ids)}/{df.shape[0]}")
+    if len(selected_ids) > 0:
+        long_df = df[df['Id'].isin(selected_ids)]
+        print("测试数据集(>512)类别数量分布:")
+        print(long_df["True"].value_counts().sort_index())
+
+
 def main_1():
     head_df = pd.read_csv(os.path.join(exp_root_dir,"exp", "sobert_res", "all_res.csv"))
     headTail_df = pd.read_csv(os.path.join(exp_root_dir,"exp", "sobert_res_truncHeadTail", "all_res.csv"))
@@ -34,6 +62,8 @@ def main_2():
                 print(f"long的数量为0,跳过这个切分")
                 continue
             print(f"long的数量:{long_test_headpred_df.shape[0]}/{test_headpred_df.shape[0]}")
+            print("long的数据类别分布")
+            print(long_test_headpred_df["True"].value_counts().sort_index())
             long_head_rows.append(build_all_res_row_from_infer_df(long_test_headpred_df))
             long_headTail_rows.append(build_all_res_row_from_infer_df(long_test_headTailpred_df))
     long_head_res_df = pd.DataFrame(long_head_rows)
@@ -48,39 +78,11 @@ def main_2():
         head_list = long_head_res_df[col_name].tolist()
         headTail_list = long_headtail_res_df[col_name].tolist()
         h = wtl(head_list,headTail_list)
-        head_mean = round(np.mean(head_list),4)
-        headTail_mean = round(np.mean(headTail_list),4)
+        head_mean = round(np.nanmean(head_list),4)
+        headTail_mean = round(np.nanmean(headTail_list),4)
         print(f"LongText:{col_name}|head:{head_mean}|headTail:{headTail_mean}|{h}")
 
-
-
-def selectLongIds(dataset_df):
-    longIds = []
-    seed = 42
-    repeat = 1
-    trained_model_dir = os.path.join(exp_root_dir,"exp","trained_models","sobert",f"ft_model_{seed}_{repeat}")
-    tokenizer = AutoTokenizer.from_pretrained(trained_model_dir, use_fast=True)
-    for row_id,row in dataset_df.iterrows():
-        Id = row['Id']
-        text = row['Text']
-        token_ids = tokenizer.encode(text,add_special_tokens=False,truncation=False)
-        if len(token_ids) > 510: # 要给两个特殊token留地方
-            longIds.append(Id)
-    return longIds
-
-
-def print_distribution(df:pd.DataFrame,all_long_ids:list):
-    print(f"数据集总数量:{df.shape[0]}")
-    print("数据集类别数量分布:")
-    print(df["True"].value_counts().sort_index())
-    selected_ids = set(df["Id"]) & set(all_long_ids)
-    print(f"测试数据集(>512)数量:{len(selected_ids)}/{df.shape[0]}")
-    if len(selected_ids) > 0:
-        long_df = df[df['Id'].isin(selected_ids)]
-        print("测试数据集(>512)类别数量分布:")
-        print(long_df["True"].value_counts().sort_index())
-
-def main():
+def main_3():
     # 整体数据集
     print("="*50)
     print("整体数据集类别分布情况:")
@@ -129,83 +131,8 @@ def main():
             misclassified_ids.append(int(row["Id"]))
     misclassified_df = test_df[test_df['Id'].isin(misclassified_ids)]
     print_distribution(misclassified_df,longIds)
-    ##################################################################################
-
-    long_head_res = []
-    longf_headtail_res = []
-    longmisclassified_head_res = []
-    misclassified_headTail_res = []
-    test_long_id_res = []
-    for seed in range(42,42+5):
-        for repeat in range(1,1+3):
-            print(f"{seed}_{repeat}")
-            longIds = []
-            trained_model_dir = os.path.join(exp_root_dir,"exp","trained_models","sobert",f"ft_model_{seed}_{repeat}")
-            tokenizer = AutoTokenizer.from_pretrained(trained_model_dir, use_fast=True)
-            for row_id,row in dataset_df.iterrows():
-                Id = row['Id']
-                text = row['Text']
-                token_ids = tokenizer.encode(text,add_special_tokens=False,truncation=False)
-                if len(token_ids) > 510: # 要给两个特殊token留地方
-                    longIds.append(Id)
-            print(f"整体数据集中长Text总共条数:{len(longIds)}/{dataset_df.shape[0]}")
-            test_headpred_df =  pd.read_csv(os.path.join(exp_root_dir,"exp","sobert_res", f"seed_{seed}_{repeat}","sobert.csv"))
-            test_headTailpred_df =  pd.read_csv(os.path.join(exp_root_dir,"exp","sobert_res_truncHeadTail", f"seed_{seed}_{repeat}","sobert.csv"))
-            test_longText_num = len(set(test_headpred_df["Id"]) & set(longIds))
-            if test_longText_num == 0:
-                print("这次切分出来的test没有长Text,跳过")
-                continue
-            print(f"这次切分出来的test长Text总共条数:{test_longText_num}")
-            long_test_headpred_df = test_headpred_df[test_headpred_df['Id'].isin(longIds)]
-            test_long_id_res.append(long_test_headpred_df["Id"].tolist())
-            misclassified_long_head = []
-            for id,t,p in zip(long_test_headpred_df["Id"].tolist(),long_test_headpred_df["True"].tolist(),long_test_headpred_df["pred"].tolist()):
-                if int(t) != int(p):
-                    misclassified_long_head.append(id)
-            misclassified_head_res.append(misclassified_long_head)
-
-            long_test_headTailpred_df = test_headTailpred_df[test_headTailpred_df['Id'].isin(longIds)]
-
-            misclassified_long_headTail = []
-            for id,t,p in zip(long_test_headTailpred_df["Id"].tolist(),long_test_headTailpred_df["True"].tolist(),long_test_headTailpred_df["pred"].tolist()):
-                if int(t) != int(p):
-                    misclassified_long_headTail.append(id)
-            misclassified_headTail_res.append(misclassified_long_headTail)
-
-            long_head_res.append(build_all_res_row_from_infer_df(long_test_headpred_df))
-            longf_headtail_res.append(build_all_res_row_from_infer_df(long_test_headTailpred_df))
-
-    mis_mean_head = 0
-    mis_mean_headTail = 0
-    long_mean = 0
-    count = 0
-    for long_ids, mis_list_head,mis_list_headTail in zip(test_long_id_res,misclassified_head_res, misclassified_headTail_res):
-        count += 1
-        mis_mean_head += len(mis_list_head)
-        mis_mean_headTail += len(mis_list_headTail)
-        long_mean += len(long_ids)
-    mis_mean_head = round(mis_mean_head / count,4) 
-    mis_mean_headTail = round(mis_mean_headTail / count,4) 
-    long_mean = round(long_mean / count,4) 
-    print(f"Head test中长文本错误分类的数量:{mis_mean_head}/{long_mean}")
-    print(f"HeadTail test中长文本错误分类的数量:{mis_mean_headTail}/{long_mean}")
-
-    long_head_res_df = pd.DataFrame(long_head_res)
-    long_headtail_res_df = pd.DataFrame(longf_headtail_res)
-    ordered_columns = []
-    for label_num in list(range(6)):
-        ordered_columns.extend([f"acc_{label_num}", f"f1_{label_num}", f"auc_{label_num}"])
-    ordered_columns.extend(["acc_all", "f1_all", "auc_all"])
-    long_head_res_df = long_head_res_df[ordered_columns]
-    long_headtail_res_df = long_headtail_res_df[ordered_columns]
-
-    for col_name in ordered_columns:
-        head_mean = round(np.mean(long_head_res_df[col_name]),4)
-        headTail_mean = round(np.mean(long_headtail_res_df[col_name]),4)
-        print(f"LongText:{col_name}|head:{head_mean}|headTail:{headTail_mean}")
-
 if __name__ == "__main__":
     exp_root_dir = "/data/mml/DL_bug_classification"
     # main_1()
     main_2()
-    # main()
+    # main_3()
