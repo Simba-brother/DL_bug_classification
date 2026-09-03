@@ -35,6 +35,9 @@ def print_distribution(df:pd.DataFrame,all_long_ids:list):
 
 
 def main_1():
+    '''
+    head与head+tail测试集性能指标对比
+    '''
     head_df = pd.read_csv(os.path.join(exp_root_dir,"exp", "sobert_res", "all_res.csv"))
     headTail_df = pd.read_csv(os.path.join(exp_root_dir,"exp", "sobert_res_truncHeadTail", "all_res.csv"))
     col_name_list = head_df.columns.tolist()
@@ -47,6 +50,9 @@ def main_1():
         print(f"{col_name}|head_avg:{head_avg}|headTail_avg:{headTail_avg}|{h}")
 
 def main_2():
+    '''
+    head与head+tail测试集（>512）性能指标对比
+    '''
     dataset_df = pd.read_csv("dataset.csv")
     longIds = selectLongIds(dataset_df)
     long_head_rows = []
@@ -83,6 +89,9 @@ def main_2():
         print(f"LongText:{col_name}|head:{head_mean}|headTail:{headTail_mean}|{h}")
 
 def main_3():
+    '''
+    长文数据分布
+    '''
     # 整体数据集
     print("="*50)
     print("整体数据集类别分布情况:")
