@@ -43,7 +43,12 @@ def test5():
             time.sleep(0.001)
             bar()
 
+def test6():
+    a = set([1,2,3])
+    b = set([4,2,6])
+    print(len(a & b))
+
 if __name__ == '__main__':
     # test()
     # get_csv_files("/data/mml/DL_bug_classification/remove_word")
-    test5()
+    test6()

@@ -187,7 +187,7 @@ def infer_trained_model(trained_model_dir:str, df:pd.DataFrame, device='cuda:0')
 
     X_test, y_test = list(df["Text"]), list(df["LabelNum"])
     # print(f"测试集大小:{len(X_test)}")
-    truncation_mode = "head_tail"
+    truncation_mode = "head"
     print(f"truncation_mode:{truncation_mode}")
     test_loader = DataLoader(TextDataset(X_test, y_test, tokenizer,truncation_mode=truncation_mode), batch_size=32, shuffle=False)
     model.eval()
@@ -419,7 +419,7 @@ def eval_bert(model_name:str,device:str,dataset_split_method:str,experiment_sett
     experiment_setting:seed_15|seed_5_repeat_3
     '''
     assert model_name in ["sobert","codebert","robert"], "model_name 传参错误"
-    save_dir = os.path.join(exp_data_dir,f"{model_name}_res_truncHeadTail")
+    save_dir = os.path.join(exp_data_dir,f"{model_name}_res_CodeModel2NoCodeDataset")
     os.makedirs(save_dir,exist_ok=True)
     # save_file_name = "res.joblib"
     # save_path = os.path.join(save_dir,save_file_name)
@@ -625,7 +625,7 @@ def eval_xwj_from_all_res():
 
 def main():
     # bert系列
-    device = "cuda:1"
+    device = "cuda:0"
     bertname = "sobert" # sobert|codebert|robert
     dataset_split_method = "random" # random|time|time_tvt(不用了)
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
@@ -641,9 +641,10 @@ def main():
     # eval_xwj_from_all_res()
     pass
 if __name__ == "__main__":
-    NOCODE = False
+    NOCODE = True
+    CodeModel2NoCode_flag = True
     exp_data_dir = "/data/mml/DL_bug_classification"
-    if NOCODE is True:
+    if CodeModel2NoCode_flag is False and NOCODE is True:
         exp_data_dir = os.path.join(exp_data_dir,"exp_nocode")
     else:
         exp_data_dir = os.path.join(exp_data_dir,"exp")
