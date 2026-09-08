@@ -160,6 +160,6 @@ def main_3():
 
 if __name__ == "__main__":
     exp_root_dir = "/data/mml/DL_bug_classification"
-    main_1() # head与head+tail测试集性能指标对比
-    # main_2() # head与head+tail测试集（>512）性能指标对比
+    # main_1() # head与head+tail测试集性能指标对比
+    main_2() # head与head+tail测试集（>512）性能指标对比
     # main_3() # 长文数据分布

@@ -142,7 +142,6 @@ def eval_single_word():
         rm_f1_df = pd.DataFrame(rm_f1)
         rm_f1_df.to_csv(os.path.join(save_dir,"rm.csv"),index=False)
         print(f"F1-score结果保存在:{save_dir}")
-
     if stage == 3:
         '''
         阶段3：基于阶段2的指标,统计论文结果
@@ -150,6 +149,7 @@ def eval_single_word():
         f1_dir = os.path.join(exp_data_dir,"remove_word_res","f1")
         orgin_f1_df = pd.read_csv(os.path.join(f1_dir,"origin.csv"))
         rm_f1 = pd.read_csv(os.path.join(f1_dir,"rm.csv"))
+        print(f"总共剥离的单词数量:{rm_f1.shape[0]}")
         for col in [0,1,2,3,4,"all"]:
             increase_dict = {}
             decrease_dict = {}
@@ -281,6 +281,7 @@ def eval_combinword():
         f1_dir = os.path.join(exp_data_dir,"remove_combineword_res","f1")
         orgin_f1_df = pd.read_csv(os.path.join(f1_dir,"origin.csv"))
         rm_f1 = pd.read_csv(os.path.join(f1_dir,"rm.csv"))
+        print(f"总共剥离的词组数量:{rm_f1.shape[0]}")
         for col in [0,1,2,3,4,"all"]:
             increase_dict = {}
             decrease_dict = {}
@@ -322,4 +323,4 @@ if __name__ == "__main__":
     device = "cuda:4" # 推理设备
     exp_data_dir = "/data/mml/DL_bug_classification" # 项目实验根目录
     # eval_single_word()
-    eval_combinword()
+    # eval_combinword()
