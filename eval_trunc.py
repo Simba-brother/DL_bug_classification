@@ -8,10 +8,13 @@ from compare import wtl
 
 
 def selectLongIds(dataset_df):
+    '''
+    从数据集中选择token>512的数据ID
+    '''
     longIds = []
     seed = 42
     repeat = 1
-    trained_model_dir = os.path.join(exp_root_dir,"exp","trained_models","sobert",f"ft_model_{seed}_{repeat}")
+    trained_model_dir = os.path.join(exp_root_dir,"exp_random5-3_code","trained_models","sobert",f"ft_model_{seed}_{repeat}")
     tokenizer = AutoTokenizer.from_pretrained(trained_model_dir, use_fast=True)
     for row_id,row in dataset_df.iterrows():
         Id = row['Id']
@@ -38,8 +41,8 @@ def main_1():
     '''
     head与head+tail测试集性能指标对比
     '''
-    head_df = pd.read_csv(os.path.join(exp_root_dir,"exp", "sobert_res", "all_res.csv"))
-    headTail_df = pd.read_csv(os.path.join(exp_root_dir,"exp", "sobert_res_truncHeadTail", "all_res.csv"))
+    head_df = pd.read_csv(os.path.join(exp_root_dir,"exp_random5-3_code", "sobert_res", "all_res.csv"))
+    headTail_df  = pd.read_csv(os.path.join(exp_root_dir,"exp_finetune_headtail", "sobert_res", "all_res.csv"))
     col_name_list = head_df.columns.tolist()
     for col_name in col_name_list:
         head_list = head_df[col_name].tolist()
@@ -60,8 +63,8 @@ def main_2():
     for seed in range(42,42+5):
         for repeat in range(1,1+3):
             print(f"{seed}_{repeat}")
-            test_headpred_df =  pd.read_csv(os.path.join(exp_root_dir,"exp","sobert_res", f"seed_{seed}_{repeat}","sobert.csv"))
-            test_headTailpred_df =  pd.read_csv(os.path.join(exp_root_dir,"exp","sobert_res_truncHeadTail", f"seed_{seed}_{repeat}","sobert.csv"))
+            test_headpred_df =  pd.read_csv(os.path.join(exp_root_dir,"exp_random5-3_code","sobert_res", f"seed_{seed}_{repeat}","sobert.csv"))
+            test_headTailpred_df =  pd.read_csv(os.path.join(exp_root_dir,"exp_finetune_headtail","sobert_res", f"seed_{seed}_{repeat}","sobert.csv"))
             long_test_headpred_df = test_headpred_df[test_headpred_df['Id'].isin(longIds)]
             long_test_headTailpred_df = test_headTailpred_df[test_headTailpred_df['Id'].isin(longIds)]
             if long_test_headpred_df.shape[0] <= 0:
@@ -110,9 +113,9 @@ def main_3():
     print("="*50)
     print("测试数据集类别分布情况:")
     print("="*50)
-    seed = 45
+    seed = 44
     repeat = 1
-    test_df =  pd.read_csv(os.path.join(exp_root_dir,"exp","sobert_res", 
+    test_df =  pd.read_csv(os.path.join(exp_root_dir,"exp_random5-3_code","sobert_res", 
                                         f"seed_{seed}_{repeat}","sobert.csv"))
     print_distribution(test_df,longIds)
 
@@ -129,7 +132,8 @@ def main_3():
 
 
     # misclassified testset(head+tail)
-    test_df =  pd.read_csv(os.path.join(exp_root_dir,"exp","sobert_res_truncHeadTail", 
+    
+    test_df =  pd.read_csv(os.path.join(exp_root_dir,"exp_finetune_headtail","sobert_res", 
                                         f"seed_{seed}_{repeat}","sobert.csv"))
     print("="*50)
     print("测试数据集(misclassified_head+tail)类别分布情况:")
@@ -140,8 +144,22 @@ def main_3():
             misclassified_ids.append(int(row["Id"]))
     misclassified_df = test_df[test_df['Id'].isin(misclassified_ids)]
     print_distribution(misclassified_df,longIds)
+    
+    # misclassified testset(sliding window)
+    test_df =  pd.read_csv(os.path.join(exp_root_dir,"exp_slidewindow","sobert_res", 
+                                        f"seed_{seed}_{repeat}","sobert.csv"))
+    print("="*50)
+    print("测试数据集(sliding window)类别分布情况:")
+    print("="*50)
+    misclassified_ids = []
+    for row_id,row in test_df.iterrows():
+        if row["True"] != row["pred"]:
+            misclassified_ids.append(int(row["Id"]))
+    misclassified_df = test_df[test_df['Id'].isin(misclassified_ids)]
+    print_distribution(misclassified_df,longIds)
+
 if __name__ == "__main__":
     exp_root_dir = "/data/mml/DL_bug_classification"
-    # main_1()
-    main_2()
-    # main_3()
+    main_1() # head与head+tail测试集性能指标对比
+    # main_2() # head与head+tail测试集（>512）性能指标对比
+    # main_3() # 长文数据分布

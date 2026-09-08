@@ -14,11 +14,12 @@ import joblib
 
 
 class TextDataset(Dataset):
-    def __init__(self, texts, labels, tokenizer, max_length=512):
+    def __init__(self, texts, labels, tokenizer:AutoTokenizer, max_length=512,truncation_mode="head_tail"):
         self.texts = texts
         self.labels = labels
         self.tokenizer = tokenizer
         self.max_length = max_length # Maximum length of each sentence(text)
+        self.truncation_mode = truncation_mode
 
     def __len__(self):
         return len(self.texts) # Number of sentences(text) in the dataset.
@@ -26,26 +27,58 @@ class TextDataset(Dataset):
     def __getitem__(self, idx):
         text = self.texts[idx] # Obtain the text based on the idx.
         label = self.labels[idx] # Obtain the label based on the idx.
-        # Tokenize the text.
-        inputs = self.tokenizer(
-            str(text),
-            max_length=self.max_length,
-            padding='max_length',
-            truncation=True,
-            return_tensors='pt'
-        )
+        if self.truncation_mode == "head_tail":
+            token_ids = self.tokenizer.encode(
+                text,
+                add_special_tokens=False,
+                truncation=False
+            )
+            # 如果模型最大长度是 512，要给 [CLS]/[SEP] 留位置
+            special_tokens_count = self.tokenizer.num_special_tokens_to_add(pair=False)
+            content_max_len = self.max_length - special_tokens_count
 
-        '''
-        随后，DataLoader 会把多条样本组合成一个批次。假设 batch_size=32，结果大致为：
-        batch['input_ids'].shape       # [32, 512]
-        batch['attention_mask'].shape  # [32, 512]
-        batch['labels'].shape          # [32]
-        '''
-        return {
-            'input_ids': inputs['input_ids'].squeeze(), # tensor([[101, 2769, 4638, 102, 0]])，每个token在词表中的编号.这里的 .squeeze() 用来去掉 tokenizer 添加的大小为1的批次维度：
-            'attention_mask': inputs['attention_mask'].squeeze(), # 1 表示真实 token，0 表示补齐的 padding。
-            'labels': torch.tensor(label) # 类别标签
-        }
+            head_len = content_max_len // 2
+            tail_len = content_max_len - head_len
+
+            if len(token_ids) > content_max_len:
+                token_ids = token_ids[:head_len] + token_ids[-tail_len:]
+
+            inputs = self.tokenizer.prepare_for_model(
+                token_ids,
+                add_special_tokens=True,
+                max_length=self.max_length,
+                padding='max_length',
+                truncation=True,
+                return_tensors='pt'
+            )
+            return {
+                'input_ids': inputs['input_ids'].squeeze(), # tensor([[101, 2769, 4638, 102, 0]])，每个token在词表中的编号.这里的 .squeeze() 用来去掉 tokenizer 添加的大小为1的批次维度：
+                'attention_mask': inputs['attention_mask'].squeeze(), # 1 表示真实 token，0 表示补齐的 padding。
+                'labels': torch.tensor(label) # 类别标签
+            }
+        elif self.truncation_mode == "head":
+            # Tokenize the text.
+            inputs = self.tokenizer(
+                str(text),
+                max_length=self.max_length,
+                padding='max_length',
+                truncation=True,
+                return_tensors='pt'
+            )
+
+            '''
+            随后，DataLoader 会把多条样本组合成一个批次。假设 batch_size=32，结果大致为：
+            batch['input_ids'].shape       # [32, 512]
+            batch['attention_mask'].shape  # [32, 512]
+            batch['labels'].shape          # [32]
+            '''
+            return {
+                'input_ids': inputs['input_ids'].squeeze(), # tensor([[101, 2769, 4638, 102, 0]])，每个token在词表中的编号.这里的 .squeeze() 用来去掉 tokenizer 添加的大小为1的批次维度：
+                'attention_mask': inputs['attention_mask'].squeeze(), # 1 表示真实 token，0 表示补齐的 padding。
+                'labels': torch.tensor(label) # 类别标签
+            }
+        else:
+            raise Exception("truncation_mode参数传入错误")
 
 def evaluate(model, val_loader, device):
     model.eval()
@@ -294,7 +327,7 @@ def main():
 if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
     os.makedirs(exp_data_dir,exist_ok=True)
-    NOCODE = True
+    NOCODE = False
     if NOCODE is False:
         exp_data_dir = os.path.join(exp_data_dir,"exp")
     else:

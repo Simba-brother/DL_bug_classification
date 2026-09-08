@@ -4,6 +4,7 @@ import os
 import nltk
 from alive_progress import alive_bar
 import time
+import torch
 
 def test():
     ours = [1,4,4,4,6,6,7,9,10,10]
@@ -48,7 +49,17 @@ def test6():
     b = set([4,2,6])
     print(len(a & b))
 
+def test7():
+    a = [1,2,3]
+    b = a[:10]
+    print(b)
+
+def test8():
+    data = [torch.tensor([1,2,3]),torch.tensor([4,5,6])]
+    b = torch.stack(data, dim=0)
+    print()
+
 if __name__ == '__main__':
     # test()
     # get_csv_files("/data/mml/DL_bug_classification/remove_word")
-    test6()
+    test8()

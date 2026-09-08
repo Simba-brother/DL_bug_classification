@@ -16,75 +16,14 @@ from collections import Counter
 import os
 import shutil
 import joblib
+from train_berts import TextDataset as BertTextDataset
+from train_berts_slidewindow import (
+    TextDataset as SlidingWindowTextDataset,
+    slide_window_collate_fn,
+    mean_window_logits,
+)
 
 LABEL_NUMS = list(range(6))
-
-class TextDataset(Dataset):
-    def __init__(self, texts, labels, tokenizer, max_length=512,truncation_mode="head"):
-        self.texts = texts
-        self.labels = labels
-        self.tokenizer = tokenizer
-        self.max_length = max_length # Maximum length of each sentence(text)
-        self.truncation_mode = truncation_mode
-
-    def __len__(self):
-        return len(self.texts) # Number of sentences(text) in the dataset.
-
-    def __getitem__(self, idx):
-        text = self.texts[idx] # Obtain the text based on the idx.
-        label = self.labels[idx] # Obtain the label based on the idx.
-        if self.truncation_mode == "head_tail":
-            token_ids = self.tokenizer.encode(
-                text,
-                add_special_tokens=False,
-                truncation=False
-            )
-            # 如果模型最大长度是 512，要给 [CLS]/[SEP] 留位置
-            special_tokens_count = self.tokenizer.num_special_tokens_to_add(pair=False)
-            content_max_len = self.max_length - special_tokens_count
-
-            head_len = content_max_len // 2
-            tail_len = content_max_len - head_len
-
-            if len(token_ids) > content_max_len:
-                token_ids = token_ids[:head_len] + token_ids[-tail_len:]
-
-            inputs = self.tokenizer.prepare_for_model(
-                token_ids,
-                add_special_tokens=True,
-                max_length=self.max_length,
-                padding='max_length',
-                truncation=True,
-                return_tensors='pt'
-            )
-            return {
-                'input_ids': inputs['input_ids'].squeeze(), # tensor([[101, 2769, 4638, 102, 0]])，每个token在词表中的编号.这里的 .squeeze() 用来去掉 tokenizer 添加的大小为1的批次维度：
-                'attention_mask': inputs['attention_mask'].squeeze(), # 1 表示真实 token，0 表示补齐的 padding。
-                'labels': torch.tensor(label) # 类别标签
-            }
-        elif self.truncation_mode == "head":
-            # Tokenize the text.
-            inputs = self.tokenizer(
-                str(text),
-                max_length=self.max_length,
-                padding='max_length',
-                truncation=True,
-                return_tensors='pt'
-            )
-
-            '''
-            随后，DataLoader 会把多条样本组合成一个批次。假设 batch_size=32，结果大致为：
-            batch['input_ids'].shape       # [32, 512]
-            batch['attention_mask'].shape  # [32, 512]
-            batch['labels'].shape          # [32]
-            '''
-            return {
-                'input_ids': inputs['input_ids'].squeeze(), # tensor([[101, 2769, 4638, 102, 0]])，每个token在词表中的编号.这里的 .squeeze() 用来去掉 tokenizer 添加的大小为1的批次维度：
-                'attention_mask': inputs['attention_mask'].squeeze(), # 1 表示真实 token，0 表示补齐的 padding。
-                'labels': torch.tensor(label) # 类别标签
-            }
-        else:
-            raise Exception("truncation_mode参数传入错误")
 
 def build_test_df(dataset_split_method:str, rs:int) -> pd.DataFrame:
     """
@@ -187,9 +126,9 @@ def infer_trained_model(trained_model_dir:str, df:pd.DataFrame, device='cuda:0')
 
     X_test, y_test = list(df["Text"]), list(df["LabelNum"])
     # print(f"测试集大小:{len(X_test)}")
-    truncation_mode = "head"
+    truncation_mode = "head_tail"
     print(f"truncation_mode:{truncation_mode}")
-    test_loader = DataLoader(TextDataset(X_test, y_test, tokenizer,truncation_mode=truncation_mode), batch_size=32, shuffle=False)
+    test_loader = DataLoader(BertTextDataset(X_test, y_test, tokenizer,truncation_mode=truncation_mode), batch_size=32, shuffle=False)
     model.eval()
 
     p_labels = []
@@ -203,6 +142,46 @@ def infer_trained_model(trained_model_dir:str, df:pd.DataFrame, device='cuda:0')
 
             outputs = model(input_ids, attention_mask=attention_mask)
             logits = outputs.logits
+            preds = torch.argmax(logits, dim=-1)
+            batch_probs = torch.softmax(logits, dim=-1)
+
+            p_labels.extend(preds.cpu().numpy().tolist())
+            gt_labels.extend(labels.cpu().numpy().tolist())
+            probs.extend(batch_probs.cpu().numpy().tolist())
+
+    return gt_labels, p_labels, probs
+
+
+def infer_slidingwindow_trained_model(trained_model_dir:str, df:pd.DataFrame, device='cuda:0'):
+    '''
+    使用 sliding window 训练得到的 trained model 对 df 推理，返回真值、预测类别和每类概率。
+    '''
+    tokenizer = AutoTokenizer.from_pretrained(trained_model_dir, use_fast=True)
+    model = AutoModelForSequenceClassification.from_pretrained(trained_model_dir)
+    model.to(device)
+
+    X_test, y_test = list(df["Text"]), list(df["LabelNum"])
+    batch_size = 8
+    print(f"sliding window mean logits, batch_size:{batch_size}")
+    test_loader = DataLoader(
+        SlidingWindowTextDataset(X_test, y_test, tokenizer),
+        batch_size=batch_size,
+        shuffle=False,
+        collate_fn=slide_window_collate_fn,
+    )
+    model.eval()
+
+    p_labels = []
+    gt_labels = []
+    probs = []
+    with torch.no_grad():
+        for batch in test_loader:
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            window_mask = batch['window_mask'].to(device)
+            labels = batch['labels'].to(device)
+
+            logits = mean_window_logits(model, input_ids, attention_mask, window_mask)
             preds = torch.argmax(logits, dim=-1)
             batch_probs = torch.softmax(logits, dim=-1)
 
@@ -411,6 +390,51 @@ def save_all_res_from_llm_csvs(save_dir:str, result_name:str, experiment_configs
     return all_res_path
 
 
+def eval_slidingwindow_bert(model_name:str,device:str,dataset_split_method:str,experiment_setting:str="seed_5_repeat_3"):
+    '''
+    model_name:sobert|codebert|robert
+    device:'cuda:0'
+    dataset_split_method:random|time
+    experiment_setting:seed_15|seed_5_repeat_3
+    '''
+    assert model_name in ["sobert","codebert","robert"], "model_name 传参错误"
+    # trained bert model
+    slidingwindow_exp_data_dir = os.path.join(os.path.dirname(exp_data_dir), "exp_slidewindow")
+    save_dir = os.path.join(slidingwindow_exp_data_dir,f"{model_name}_res")
+    # 15次重复实验的id
+    experiment_configs = build_experiment_configs(experiment_setting)
+    for experiment_config in experiment_configs:
+        exp_id = experiment_config["exp_id"]
+        split_seed = experiment_config["split_seed"]
+        repeat_id = experiment_config["repeat_id"]
+        print(
+            f"实验设置:{experiment_setting}, "
+            f"实验id:{exp_id}, "
+            f"数据集切分随机数种子:{split_seed}, "
+            f"重复id:{repeat_id}"
+        )
+        # 获得该次重复实验的测试集
+        test_df = build_test_df(dataset_split_method, split_seed)
+        # 一个训练好的模型目录
+        trained_model_dir = os.path.join(
+            slidingwindow_exp_data_dir,
+            "trained_models",
+            model_name,
+            f"ft_model_{exp_id}",
+        )
+        gt_labels, p_labels, probs = infer_slidingwindow_trained_model(trained_model_dir, test_df, device=device)
+        predict_df = build_prediction_df(test_df, gt_labels, p_labels, probs)
+
+        predict_save_dir = os.path.join(save_dir, f"seed_{exp_id}")
+        os.makedirs(predict_save_dir, exist_ok=True)
+        predict_save_path = os.path.join(predict_save_dir, f"{model_name}.csv")
+        predict_df.to_csv(predict_save_path, index=False)
+        print(f"{model_name} sliding window seed {exp_id} 测试集推理结果保存在:{predict_save_path}")
+
+    all_res_path = save_all_res_from_infer_csvs(save_dir, model_name, experiment_configs)
+    print(f"{model_name} sliding window 15次推理指标CSV保存在:{all_res_path}")
+
+
 def eval_bert(model_name:str,device:str,dataset_split_method:str,experiment_setting:str="seed_15"):
     '''
     model_name:sobert|codebert|robert
@@ -419,7 +443,7 @@ def eval_bert(model_name:str,device:str,dataset_split_method:str,experiment_sett
     experiment_setting:seed_15|seed_5_repeat_3
     '''
     assert model_name in ["sobert","codebert","robert"], "model_name 传参错误"
-    save_dir = os.path.join(exp_data_dir,f"{model_name}_res_CodeModel2NoCodeDataset")
+    save_dir = os.path.join(exp_data_dir,f"{model_name}_res")
     os.makedirs(save_dir,exist_ok=True)
     # save_file_name = "res.joblib"
     # save_path = os.path.join(save_dir,save_file_name)
@@ -629,7 +653,8 @@ def main():
     bertname = "sobert" # sobert|codebert|robert
     dataset_split_method = "random" # random|time|time_tvt(不用了)
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
-    eval_bert(bertname, device, dataset_split_method, experiment_setting)
+    # eval_bert(bertname, device, dataset_split_method, experiment_setting)
+    eval_slidingwindow_bert(bertname, device, dataset_split_method, experiment_setting)
 
     # 传统系列(tfidf|word2vec)
     # eval_tfidf_and_word2vec("word2vec", experiment_setting) # tfidf|word2vec
@@ -641,10 +666,9 @@ def main():
     # eval_xwj_from_all_res()
     pass
 if __name__ == "__main__":
-    NOCODE = True
-    CodeModel2NoCode_flag = True
+    NOCODE = False
     exp_data_dir = "/data/mml/DL_bug_classification"
-    if CodeModel2NoCode_flag is False and NOCODE is True:
+    if  NOCODE is True:
         exp_data_dir = os.path.join(exp_data_dir,"exp_nocode")
     else:
         exp_data_dir = os.path.join(exp_data_dir,"exp")
