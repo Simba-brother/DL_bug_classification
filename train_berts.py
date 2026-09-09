@@ -177,7 +177,7 @@ def build_experiment_configs(experiment_setting:str):
     raise ValueError("experiment_setting 只能是 seed_15 或 seed_5_repeat_3")
 
 
-def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method):
+def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method,max_length=512,batch_size=32):
     '''
     device:"cuda:1"
     dataset_split_method:"random"|"time"
@@ -196,11 +196,11 @@ def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method):
     model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels)
 
     # 训练集加载器
-    train_loader = DataLoader(TextDataset(X_train, y_train, tokenizer),batch_size=32, shuffle=True)
+    train_loader = DataLoader(TextDataset(X_train, y_train, tokenizer,max_length=max_length),batch_size=batch_size, shuffle=True)
     # 验证集加载器
-    val_loader = DataLoader(TextDataset(X_val, y_val, tokenizer), batch_size=32)
+    val_loader = DataLoader(TextDataset(X_val, y_val, tokenizer,max_length=max_length), batch_size=batch_size)
     # 测试集加载器
-    test_loader = DataLoader(TextDataset(X_test, y_test, tokenizer), batch_size=32)
+    test_loader = DataLoader(TextDataset(X_test, y_test, tokenizer,max_length=max_length), batch_size=batch_size)
 
 
     # 模型参数优化器
@@ -294,14 +294,20 @@ def main():
     repeat_num = len(experiment_configs) # 总重复实验次数
     print(f"实验重复次数:{repeat_num}")
     dataset_split_method = "random" # random|time|time_tvt(不用)
-    model_name = "sobert" # sobert|codebert|robert
+    model_name = "sobert" # sobert|codebert|robert|longformer
     model_path = None
+    max_length = 512
+    batch_size = 32
     if model_name == "sobert":
         model_path= "./model"
     elif model_name == "codebert":
         model_path = "./codebert-base"
     elif model_name == "robert":
         model_path = "./roberta-base"
+    elif model_name == "longformer":
+        model_path = "./longformer"
+        max_length = 4096
+        batch_size = 2
     else:
         raise Exception("model path 参数错误")
     save_dir = os.path.join(exp_data_dir,f"trained_models",model_name)
@@ -322,6 +328,8 @@ def main():
             split_seed,
             device,
             dataset_split_method,
+            max_length,
+            batch_size,
         )
 
 if __name__ == "__main__":

@@ -160,20 +160,32 @@ def get_method_metric_lists(method_name:str) -> dict[str, dict[str, list[float]]
     return method_metric_lists
 
 
-def wtl(our_data_list,baseline_data_list):
+def wtl(our_data_list,baseline_data_list,sign=1):
     # data list 是正向指标
     p_value = stats.wilcoxon(our_data_list, baseline_data_list).pvalue
     sorted_our_data_list = sorted(our_data_list)
     sorted_baseline_data_list = sorted(baseline_data_list)
     delta,info = cliffs_delta(sorted_our_data_list, sorted_baseline_data_list)
-    if p_value < 0.05 and delta > 0.147:
-        # ours和baseline有差异，且我们的值偏大
-        return 'W'
-    elif p_value < 0.05 and delta < -0.147:
-        # ours和baseline有差异，且我们的值偏小
-        return 'L'
+    if sign == 1:
+        # 正向指标 
+        if p_value < 0.05 and delta < -0.147:
+            # ours和baseline有差异，且我们的值偏大
+            return 'W'
+        elif p_value < 0.05 and delta > 0.147:
+            # ours和baseline有差异，且我们的值偏小
+            return 'L'
+        else:
+            return 'T'
     else:
-        return 'T'
+        # 负向指标
+        if p_value < 0.05 and delta < 0.147:
+            # ours和baseline有差异，且我们的值偏大
+            return 'W'
+        elif p_value < 0.05 and delta >= -0.147:
+            # ours和baseline有差异，且我们的值偏小
+            return 'L'
+        else:
+            return 'T'
 
 def eval_wtl():
     '''

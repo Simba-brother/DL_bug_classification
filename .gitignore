@@ -27,6 +27,7 @@ __MACOSX/
 model/
 codebert-base
 roberta-base/
+longformer/
 
 # 数据集
 data/
