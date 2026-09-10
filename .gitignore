@@ -28,6 +28,7 @@ model/
 codebert-base
 roberta-base/
 longformer/
+codeT5/
 
 # 数据集
 data/

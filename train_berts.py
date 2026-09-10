@@ -11,6 +11,7 @@ from collections import Counter
 import os
 from collections import defaultdict
 import joblib
+from types import SimpleNamespace
 
 
 class TextDataset(Dataset):
@@ -79,6 +80,75 @@ class TextDataset(Dataset):
             }
         else:
             raise Exception("truncation_mode参数传入错误")
+
+
+class CodeT5ForSequenceClassification(torch.nn.Module):
+    def __init__(self, model_path, num_labels):
+        super().__init__()
+        from transformers import T5EncoderModel
+
+        self.num_labels = num_labels
+        self.encoder = T5EncoderModel.from_pretrained(model_path)
+        hidden_size = self.encoder.config.d_model
+        dropout_rate = getattr(self.encoder.config, "dropout_rate", 0.1)
+        self.dropout = torch.nn.Dropout(dropout_rate)
+        self.classifier = torch.nn.Linear(hidden_size, num_labels)
+        self.loss_fn = torch.nn.CrossEntropyLoss()
+
+    def forward(self, input_ids, attention_mask=None, labels=None):
+        outputs = self.encoder(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            return_dict=True,
+        )
+        last_hidden_state = outputs.last_hidden_state
+        if attention_mask is None:
+            pooled_output = last_hidden_state.mean(dim=1)
+        else:
+            mask = attention_mask.unsqueeze(-1).to(last_hidden_state.dtype)
+            pooled_output = (last_hidden_state * mask).sum(dim=1)
+            pooled_output = pooled_output / mask.sum(dim=1).clamp(min=1.0)
+
+        logits = self.classifier(self.dropout(pooled_output))
+        loss = None
+        if labels is not None:
+            loss = self.loss_fn(logits, labels.long())
+
+        return SimpleNamespace(loss=loss, logits=logits)
+
+    def save_pretrained(self, save_directory):
+        os.makedirs(save_directory, exist_ok=True)
+        self.encoder.save_pretrained(save_directory)
+        torch.save(
+            {
+                "num_labels": self.num_labels,
+                "classifier_state_dict": self.classifier.state_dict(),
+            },
+            os.path.join(save_directory, "classification_head.bin"),
+        )
+
+    @classmethod
+    def from_pretrained(cls, model_path, num_labels=None):
+        head_path = os.path.join(model_path, "classification_head.bin")
+        head_state = None
+        if os.path.exists(head_path):
+            head_state = torch.load(head_path, map_location="cpu")
+            if num_labels is None:
+                num_labels = head_state["num_labels"]
+        if num_labels is None:
+            raise ValueError("num_labels 不能为空")
+
+        model = cls(model_path, num_labels)
+        if head_state is not None:
+            model.classifier.load_state_dict(head_state["classifier_state_dict"])
+        return model
+
+
+def build_sequence_classification_model(model_path, num_labels, model_name):
+    if model_name == "codeT5":
+        return CodeT5ForSequenceClassification.from_pretrained(model_path, num_labels)
+    return AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels)
+
 
 def evaluate(model, val_loader, device):
     model.eval()
@@ -177,7 +247,7 @@ def build_experiment_configs(experiment_setting:str):
     raise ValueError("experiment_setting 只能是 seed_15 或 seed_5_repeat_3")
 
 
-def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method,max_length=512,batch_size=32):
+def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method,model_name=None,max_length=512,batch_size=32):
     '''
     device:"cuda:1"
     dataset_split_method:"random"|"time"
@@ -193,7 +263,7 @@ def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method,max_
     # tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
     # 预训练分类模型
-    model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels)
+    model = build_sequence_classification_model(model_path, num_labels, model_name)
 
     # 训练集加载器
     train_loader = DataLoader(TextDataset(X_train, y_train, tokenizer,max_length=max_length),batch_size=batch_size, shuffle=True)
@@ -294,7 +364,7 @@ def main():
     repeat_num = len(experiment_configs) # 总重复实验次数
     print(f"实验重复次数:{repeat_num}")
     dataset_split_method = "random" # random|time|time_tvt(不用)
-    model_name = "sobert" # sobert|codebert|robert|longformer
+    model_name = "codeT5" # sobert|codebert|robert|longformer|codeT5
     model_path = None
     max_length = 512
     batch_size = 32
@@ -308,6 +378,9 @@ def main():
         model_path = "./longformer"
         max_length = 4096
         batch_size = 2
+    elif model_name == "codeT5":
+        model_path = "./codeT5"
+        batch_size = 8
     else:
         raise Exception("model path 参数错误")
     save_dir = os.path.join(exp_data_dir,f"trained_models",model_name)
@@ -328,6 +401,7 @@ def main():
             split_seed,
             device,
             dataset_split_method,
+            model_name,
             max_length,
             batch_size,
         )
@@ -336,10 +410,7 @@ if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
     os.makedirs(exp_data_dir,exist_ok=True)
     NOCODE = False
-    if NOCODE is False:
-        exp_data_dir = os.path.join(exp_data_dir,"exp")
-    else:
-        exp_data_dir = os.path.join(exp_data_dir,"exp_nocode")
+    exp_data_dir = os.path.join(exp_data_dir,"exp_codeT5")
     pid = os.getpid()
     print(f"PID:{pid}")
     main()
