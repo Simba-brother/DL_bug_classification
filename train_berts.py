@@ -358,7 +358,7 @@ def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method,mode
     return best_info
 
 def main():
-    device = "cuda:7"
+    device = "cuda:2"
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
     repeat_num = len(experiment_configs) # 总重复实验次数
