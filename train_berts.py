@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 
 class TextDataset(Dataset):
-    def __init__(self, texts, labels, tokenizer:AutoTokenizer, max_length=512,truncation_mode="head_tail"):
+    def __init__(self, texts, labels, tokenizer:AutoTokenizer, max_length=512,truncation_mode="head"):
         self.texts = texts
         self.labels = labels
         self.tokenizer = tokenizer
@@ -358,13 +358,13 @@ def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method,mode
     return best_info
 
 def main():
-    device = "cuda:2"
+    device = "cuda:1"
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
     repeat_num = len(experiment_configs) # 总重复实验次数
     print(f"实验重复次数:{repeat_num}")
     dataset_split_method = "random" # random|time|time_tvt(不用)
-    model_name = "codeT5" # sobert|codebert|robert|longformer|codeT5
+    model_name = "longformer" # sobert|codebert|robert|longformer|codeT5
     model_path = None
     max_length = 512
     batch_size = 32
@@ -410,7 +410,7 @@ if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
     os.makedirs(exp_data_dir,exist_ok=True)
     NOCODE = False
-    exp_data_dir = os.path.join(exp_data_dir,"exp_codeT5")
+    exp_data_dir = os.path.join(exp_data_dir,"exp_longformer")
     pid = os.getpid()
     print(f"PID:{pid}")
     main()
