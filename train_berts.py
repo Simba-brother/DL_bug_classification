@@ -203,7 +203,6 @@ def build_dataset(dataset_split_method:str,split_seed:int):
         X_val, y_val = list(val_df["Text"]), list(val_df["LabelNum"])
         X_test, y_test = list(test_df["Text"]), list(test_df["LabelNum"])
         return X_train,y_train,X_val,y_val,X_test,y_test,num_labels
-
     elif dataset_split_method == 'random':
         if NOCODE is True:
             df = pd.read_csv("dataset_nocode.csv")
@@ -358,13 +357,13 @@ def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method,mode
     return best_info
 
 def main():
-    device = "cuda:1"
+    device = "cuda:7"
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
     repeat_num = len(experiment_configs) # 总重复实验次数
     print(f"实验重复次数:{repeat_num}")
     dataset_split_method = "random" # random|time|time_tvt(不用)
-    model_name = "longformer" # sobert|codebert|robert|longformer|codeT5
+    model_name = "sobert" # sobert|codebert|robert|longformer|codeT5
     model_path = None
     max_length = 512
     batch_size = 32
@@ -410,7 +409,7 @@ if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
     os.makedirs(exp_data_dir,exist_ok=True)
     NOCODE = False
-    exp_data_dir = os.path.join(exp_data_dir,"exp_longformer")
+    exp_data_dir = os.path.join(exp_data_dir,"exp_sobert")
     pid = os.getpid()
     print(f"PID:{pid}")
     main()

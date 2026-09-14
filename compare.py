@@ -9,7 +9,7 @@ from scipy import stats
 from cliffs_delta import cliffs_delta
 
 BASELINE_CLFS = ("LR", "DT", "RF", "SVM", "KNN")
-BERT_METHODS = ("sobert", "robert", "codebert")
+BERT_METHODS = ("sobert", "robert", "codebert", "longformer", "codeT5")
 BASELINE_METHODS = ("tfidf", "word2vec")
 LLM_METHODS = ("chatgpt", "claude")
 # LLM_METHODS = ("chatgpt",)
@@ -168,22 +168,22 @@ def wtl(our_data_list,baseline_data_list,sign=1):
     delta,info = cliffs_delta(sorted_our_data_list, sorted_baseline_data_list)
     if sign == 1:
         # 正向指标 
-        if p_value < 0.05 and delta < -0.147:
+        if p_value < 0.05 and delta > 0.147:
             # ours和baseline有差异，且我们的值偏大
             return 'W'
-        elif p_value < 0.05 and delta > 0.147:
+        elif p_value < 0.05 and delta < -0.147:
             # ours和baseline有差异，且我们的值偏小
             return 'L'
         else:
             return 'T'
     else:
         # 负向指标
-        if p_value < 0.05 and delta < 0.147:
+        if p_value < 0.05 and delta > 0.147:
             # ours和baseline有差异，且我们的值偏大
-            return 'W'
-        elif p_value < 0.05 and delta >= -0.147:
-            # ours和baseline有差异，且我们的值偏小
             return 'L'
+        elif p_value < 0.05 and delta < -0.147:
+            # ours和baseline有差异，且我们的值偏小
+            return 'W'
         else:
             return 'T'
 
@@ -194,8 +194,9 @@ def eval_wtl():
     '''
     sobert_metric_lists = get_method_metric_lists("sobert")["sobert"]
     baseline_metric_lists = {}
-    method_name_list = ("robert", "codebert", "tfidf", "word2vec", "chatgpt", "claude")
+    method_name_list = ("robert", "codebert", "codeT5","longformer", "tfidf", "word2vec", "chatgpt", "claude")
     # method_name_list = ("robert", "codebert", "tfidf", "word2vec", "chatgpt")
+    # method_name_list = ("robert",)
     for method_name in method_name_list:
         baseline_metric_lists.update(get_method_metric_lists(method_name))
 
@@ -218,6 +219,6 @@ def main():
 
 
 if __name__ == "__main__":
-    exp_root_dir = "/data/mml/DL_bug_classification/exp"
+    exp_root_dir = "/data/mml/DL_bug_classification/exp_random5-3_code"
     # main()
     eval_wtl()

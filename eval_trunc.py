@@ -64,64 +64,69 @@ def main_1():
     head与head+tail测试集性能指标对比
     '''
     head_df = pd.read_csv(os.path.join(exp_root_dir,"exp_random5-3_code", "sobert_res", "all_res.csv"))
-    headTail_df  = pd.read_csv(os.path.join(exp_root_dir,"exp_finetune_headtail", "sobert_res", "all_res.csv"))
-    col_name_list = head_df.columns.tolist()
+    # headTail_df  = pd.read_csv(os.path.join(exp_root_dir,"exp_finetune_headtail", "sobert_res", "all_res.csv"))
+    longformert =  pd.read_csv(os.path.join(exp_root_dir,"exp_random5-3_code", "longformer_res", "all_res.csv"))
+
+    df_base = head_df
+    df_improve = longformert
+
+    col_name_list = df_base.columns.tolist()
     for col_name in col_name_list:
-        head_list = head_df[col_name].tolist()
-        headTail_list = headTail_df[col_name].tolist()
-        h = wtl(head_list,headTail_list)
-        head_avg = round(np.mean(head_list),4)
-        headTail_avg = round(np.mean(headTail_list),4)
-        print(f"{col_name}|head_avg:{head_avg}|headTail_avg:{headTail_avg}|{h}")
+        base_list = df_base[col_name].tolist()
+        improve_list = df_improve[col_name].tolist()
+        h = wtl(base_list,improve_list)
+        base_avg = round(np.mean(base_list),4)
+        improve_avg = round(np.mean(improve_list),4)
+        print(f"{col_name}|base_avg:{base_avg}|improve_avg:{improve_avg}|{h}")
 
 def main_2():
     '''
-    head与head+tail测试集（>512）性能指标对比
+    base与improve测试集（>512）性能指标对比
     '''
     dataset_df = pd.read_csv("dataset.csv")
     longIds = selectLongIds(dataset_df)
-    long_head_rows = []
-    long_headTail_rows = []
+    long_base_rows = []
+    long_improve_rows = []
     for seed in range(42,42+5):
         for repeat in range(1,1+3):
             print(f"{seed}_{repeat}")
-            test_headpred_df =  pd.read_csv(os.path.join(exp_root_dir,"exp_random5-3_code","sobert_res", f"seed_{seed}_{repeat}","sobert.csv"))
-            test_headTailpred_df =  pd.read_csv(os.path.join(exp_root_dir,"exp_finetune_headtail","sobert_res", f"seed_{seed}_{repeat}","sobert.csv"))
-            long_test_headpred_df = test_headpred_df[test_headpred_df['Id'].isin(longIds)]
-            long_test_headTailpred_df = test_headTailpred_df[test_headTailpred_df['Id'].isin(longIds)]
-            if long_test_headpred_df.shape[0] <= 0:
+            test_basepred_df =  pd.read_csv(os.path.join(exp_root_dir,"exp_random5-3_code","sobert_res", f"seed_{seed}_{repeat}","sobert.csv"))
+            test_improvepred_df =  pd.read_csv(os.path.join(exp_root_dir,"exp_random5-3_code","longformer_res", f"seed_{seed}_{repeat}","longformer.csv"))
+            long_test_basepred_df = test_basepred_df[test_basepred_df['Id'].isin(longIds)]
+            long_test_improvepred_df = test_improvepred_df[test_improvepred_df['Id'].isin(longIds)]
+            if long_test_basepred_df.shape[0] <= 0:
                 print(f"long的数量为0,跳过这个切分")
                 continue
-            print(f"long的数量:{long_test_headpred_df.shape[0]}/{test_headpred_df.shape[0]}")
+            print(f"long的数量:{long_test_basepred_df.shape[0]}/{test_basepred_df.shape[0]}")
             print("long的数据类别分布")
-            print(long_test_headpred_df["True"].value_counts().sort_index())
-            long_head_rows.append(build_all_res_row_from_infer_df(long_test_headpred_df))
-            long_headTail_rows.append(build_all_res_row_from_infer_df(long_test_headTailpred_df))
-    long_head_res_df = pd.DataFrame(long_head_rows)
-    long_headtail_res_df = pd.DataFrame(long_headTail_rows)
+            print(long_test_basepred_df["True"].value_counts().sort_index())
+            long_base_rows.append(build_all_res_row_from_infer_df(long_test_basepred_df))
+            long_improve_rows.append(build_all_res_row_from_infer_df(long_test_improvepred_df))
+    long_base_res_df = pd.DataFrame(long_base_rows)
+    long_improve_res_df = pd.DataFrame(long_improve_rows)
     ordered_columns = []
     for label_num in list(range(6)):
         ordered_columns.extend([f"acc_{label_num}", f"f1_{label_num}", f"auc_{label_num}"])
     ordered_columns.extend(["acc_all", "f1_all", "auc_all"])
-    long_head_res_df = long_head_res_df[ordered_columns]
-    long_headtail_res_df = long_headtail_res_df[ordered_columns]
+    long_base_res_df = long_base_res_df[ordered_columns]
+    long_improve_res_df = long_improve_res_df[ordered_columns]
     for col_name in ordered_columns:
-        head_list = long_head_res_df[col_name].tolist()
-        headTail_list = long_headtail_res_df[col_name].tolist()
-        h = wtl(head_list,headTail_list)
-        head_mean = round(np.nanmean(head_list),4)
-        headTail_mean = round(np.nanmean(headTail_list),4)
-        print(f"LongText:{col_name}|head:{head_mean}|headTail:{headTail_mean}|{h}")
+        base_list = long_base_res_df[col_name].tolist()
+        improve_list = long_improve_res_df[col_name].tolist()
+        h = wtl(base_list,improve_list)
+        base_mean = round(np.nanmean(base_list),4)
+        improve_mean = round(np.nanmean(improve_list),4)
+        print(f"LongText:{col_name}|base:{base_mean}|improve:{improve_mean}|{h}")
 
 
 
 
 
-def collection_test_distribution(sobert_res_dir,longIds):
+def collection_test_distribution(sobert_res_dir,longIds,modelname):
     repeat_collections = []
     for seed in range(42,42+5):
         for repeat in range(1,1+3):
-            test_df =  pd.read_csv(os.path.join(sobert_res_dir,f"seed_{seed}_{repeat}","sobert.csv"))
+            test_df =  pd.read_csv(os.path.join(sobert_res_dir,f"seed_{seed}_{repeat}",f"{modelname}.csv"))
             test_distribution = data_distribution(test_df,longIds)
             misclassified_testdf = get_misclassification_df(test_df)
             misclassified_test_distribution = data_distribution(misclassified_testdf,longIds)
@@ -260,48 +265,66 @@ def main_3():
     print("="*50)
     print("收集测试数据集类别分布情况:")
     print("="*50)
-    head_res_dir = os.path.join(exp_root_dir,"exp_random5-3_code/sobert_res")
+    base_res_dir = os.path.join(exp_root_dir,"exp_random5-3_code/sobert_res")
 
-    head_distribution_list = collection_test_distribution(head_res_dir,longIds)
-    headtail_res_dir = os.path.join(exp_root_dir,"exp_finetune_headtail/sobert_res")
-    headtail_distribution_list = collection_test_distribution(headtail_res_dir,longIds)
+    base_distribution_list = collection_test_distribution(base_res_dir,longIds, modelname="sobert")
+    improve_res_dir = os.path.join(exp_root_dir,"exp_random5-3_code/longformer_res")
+    improve_distribution_list = collection_test_distribution(improve_res_dir,longIds,modelname="longformer")
 
-    test_rate_res,test_count_res,test_longcount_res = test_distribution(head_distribution_list)
+    test_rate_res,test_count_res,test_longcount_res = test_distribution(base_distribution_list)
     for class_i in [0,1,2,3,4,5,"all"]:
         print(f"class:{class_i}")
         test_count = round(np.nanmean(test_count_res[class_i]),1)
         test_longcount = round(np.nanmean(test_longcount_res[class_i]),1) 
         print(f"long/count:{test_longcount}/{test_count}")
 
-    head_rate_res,head_count_res,head_longcount_res = misclassification_distribution(head_distribution_list)
-    headtail_rate_res,headtail_count_res,headtail_longcount_res = misclassification_distribution(headtail_distribution_list)
+    base_rate_res,base_count_res,base_longcount_res = misclassification_distribution(base_distribution_list)
+    improve_rate_res,improve_count_res,improve_longcount_res = misclassification_distribution(improve_distribution_list)
 
     for class_i in [0,1,2,3,4,5,"all"]:
         print(f"class:{class_i}")
-        head_rate_list = head_rate_res[class_i]
-        headtail_rate_list = headtail_rate_res[class_i]
-        head_rate_mean = nanmean_or_nan(head_rate_list)
-        headtail_rate_mean = nanmean_or_nan(headtail_rate_list)
-        h = wtl_without_nan(head_rate_list, headtail_rate_list) # 负向指标
-        # print(f"head_list:{head_rate_list}")
-        # print(f"headtail_rate_list:{headtail_rate_list}")
-        print(f"headrate:{head_rate_mean}|headTailrate:{headtail_rate_mean}|wtl:{h}")
+        print("rate=====")
+        base_rate_list = base_rate_res[class_i]
+        improve_rate_list = improve_rate_res[class_i]
+        base_rate_mean = nanmean_or_nan(base_rate_list)
+        improve_rate_mean = nanmean_or_nan(improve_rate_list)
+        h = wtl_without_nan(base_rate_list, improve_rate_list) # 负向指标
+        # print(f"base_list:{base_rate_list}")
+        # print(f"improve_rate_list:{improve_rate_list}")
+        print(f"baserate:{base_rate_mean}|improverate:{improve_rate_mean}|wtl:{h}")
 
+        print("count=====")
+        base_count_list = base_count_res[class_i]
+        improve_count_list = improve_count_res[class_i]
+        base_count_mean = nanmean_or_nan(base_count_list)
+        improve_count_mean = nanmean_or_nan(improve_count_list)
+        # h = wtl_without_nan(base_count_list, improve_count_list) # 负向指标
+
+
+        base_longcount_list = base_longcount_res[class_i]
+        improve_longcount_list = improve_longcount_res[class_i]
+        base_longcount_mean = nanmean_or_nan(base_longcount_list)
+        improve_longcount_mean = nanmean_or_nan(improve_longcount_list)
+
+        print(f"basecount:{base_longcount_mean}/{base_count_mean}|improverate:{improve_longcount_mean}/{improve_count_mean}")
+
+
+    '''
     print("="*50)
     print("聚合比例统计结果")
     print("="*50)
     for class_i in [0,1,2,3,4,5,"all"]:
-        head_count_list = head_count_res[class_i]
-        headtail_count_list = headtail_count_res[class_i]
-        head_longcount_list = head_longcount_res[class_i]
-        headtail_longcount_list = headtail_longcount_res[class_i]
+        base_count_list = base_count_res[class_i]
+        improve_count_list = improve_count_res[class_i]
+        base_longcount_list = base_longcount_res[class_i]
+        improve_longcount_list = improve_longcount_res[class_i]
 
-        head_aggregate_rate = aggregate_rate_or_nan(head_longcount_list, head_count_list)
-        headtail_aggregate_rate = aggregate_rate_or_nan(
-            headtail_longcount_list,
-            headtail_count_list,
+        base_aggregate_rate = aggregate_rate_or_nan(base_longcount_list, base_count_list)
+        improve_aggregate_rate = aggregate_rate_or_nan(
+            improve_longcount_list,
+            improve_count_list,
         )
-        compare_res = compare_aggregate_rate(head_aggregate_rate, headtail_aggregate_rate)
+        compare_res = compare_aggregate_rate(base_aggregate_rate, headtail_aggregate_rate)
         head_mean_longcount, head_mean_count = aggregate_mean_counts(
             head_longcount_list,
             head_count_list,
@@ -319,6 +342,7 @@ def main_3():
             f"headtail_aggregate_rate:{headtail_aggregate_rate}|"
             f"compare:{compare_res}"
         )
+    '''
 
 if __name__ == "__main__":
     exp_root_dir = "/data/mml/DL_bug_classification"

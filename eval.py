@@ -17,6 +17,7 @@ import os
 import shutil
 import joblib
 from train_berts import TextDataset as BertTextDataset
+from train_berts import CodeT5ForSequenceClassification
 from train_berts_slidewindow import (
     TextDataset as SlidingWindowTextDataset,
     slide_window_collate_fn,
@@ -116,19 +117,25 @@ def build_prediction_df(df:pd.DataFrame, gt_labels:list, p_labels:list, probs:li
     return pd.DataFrame(predict_data)
 
 
-def infer_trained_model(trained_model_dir:str, df:pd.DataFrame, device='cuda:0'):
+def infer_trained_model(trained_model_dir:str, modelname:str, df:pd.DataFrame, device='cuda:0'):
     '''
     使用 trained model 对 df 推理，返回真值、预测类别和每类概率。
     '''
     tokenizer = AutoTokenizer.from_pretrained(trained_model_dir, use_fast=True)
-    model = AutoModelForSequenceClassification.from_pretrained(trained_model_dir)
+    if modelname == "codeT5":
+        model =CodeT5ForSequenceClassification.from_pretrained(trained_model_dir)
+    else:
+        model = AutoModelForSequenceClassification.from_pretrained(trained_model_dir)
     model.to(device)
 
     X_test, y_test = list(df["Text"]), list(df["LabelNum"])
     # print(f"测试集大小:{len(X_test)}")
-    truncation_mode = "head_tail"
-    print(f"truncation_mode:{truncation_mode}")
-    test_loader = DataLoader(BertTextDataset(X_test, y_test, tokenizer,truncation_mode=truncation_mode), batch_size=32, shuffle=False)
+    truncation_mode = "head"
+    print(f"token截断模式:{truncation_mode}")
+    if modelname == "longformer":
+        test_loader = DataLoader(BertTextDataset(X_test, y_test, tokenizer,max_length=4096, truncation_mode="head"), batch_size=2, shuffle=False)    
+    else:
+        test_loader = DataLoader(BertTextDataset(X_test, y_test, tokenizer,truncation_mode=truncation_mode), batch_size=32, shuffle=False)
     model.eval()
 
     p_labels = []
@@ -192,11 +199,11 @@ def infer_slidingwindow_trained_model(trained_model_dir:str, df:pd.DataFrame, de
     return gt_labels, p_labels, probs
 
 
-def testing(trained_model_dir:str,df:pd.DataFrame,rs=42, device='cuda:0'):
+def testing(trained_model_dir:str,model_name:str, df:pd.DataFrame,rs=42, device='cuda:0'):
     '''
     测试函数
     '''
-    gt_labels, p_labels, probs = infer_trained_model(trained_model_dir, df, device=device)
+    gt_labels, p_labels, probs = infer_trained_model(trained_model_dir,model_name, df, device=device)
     res = build_report(gt_labels, p_labels)
     predict_df = build_prediction_df(df, gt_labels, p_labels, probs)
     # 返回统计指标
@@ -442,7 +449,7 @@ def eval_bert(model_name:str,device:str,dataset_split_method:str,experiment_sett
     dataset_split_method:random|time
     experiment_setting:seed_15|seed_5_repeat_3
     '''
-    assert model_name in ["sobert","codebert","robert"], "model_name 传参错误"
+    assert model_name in ["sobert","codebert","robert", "codeT5", "longformer"], "model_name 传参错误"
     save_dir = os.path.join(exp_data_dir,f"{model_name}_res")
     os.makedirs(save_dir,exist_ok=True)
     # save_file_name = "res.joblib"
@@ -461,7 +468,7 @@ def eval_bert(model_name:str,device:str,dataset_split_method:str,experiment_sett
         )
         test_df = build_test_df(dataset_split_method, split_seed)
         trained_model_dir = os.path.join(exp_data_dir,"trained_models",model_name,f"ft_model_{exp_id}")
-        gt_labels, p_labels, probs = infer_trained_model(trained_model_dir, test_df, device=device)
+        gt_labels, p_labels, probs = infer_trained_model(trained_model_dir,model_name, test_df, device=device)
         predict_df = build_prediction_df(test_df, gt_labels, p_labels, probs)
         # res = build_report(gt_labels, p_labels)
         # all_res[rs] = res
@@ -649,12 +656,12 @@ def eval_xwj_from_all_res():
 
 def main():
     # bert系列
-    device = "cuda:0"
-    bertname = "sobert" # sobert|codebert|robert
-    dataset_split_method = "random" # random|time|time_tvt(不用了)
+    device = "cuda:7"
+    bertname = "codeT5" # sobert|codebert|robert|codeT5|longformer
+    dataset_split_method = "time" # random|time|time_tvt(不用了)
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
-    # eval_bert(bertname, device, dataset_split_method, experiment_setting)
-    eval_slidingwindow_bert(bertname, device, dataset_split_method, experiment_setting)
+    eval_bert(bertname, device, dataset_split_method, experiment_setting)
+    # eval_slidingwindow_bert(bertname, device, dataset_split_method, experiment_setting)
 
     # 传统系列(tfidf|word2vec)
     # eval_tfidf_and_word2vec("word2vec", experiment_setting) # tfidf|word2vec
@@ -665,12 +672,8 @@ def main():
     # eval_xwj()
     # eval_xwj_from_all_res()
     pass
+
 if __name__ == "__main__":
-    NOCODE = False
-    exp_data_dir = "/data/mml/DL_bug_classification"
-    if  NOCODE is True:
-        exp_data_dir = os.path.join(exp_data_dir,"exp_nocode")
-    else:
-        exp_data_dir = os.path.join(exp_data_dir,"exp")
-    os.makedirs(exp_data_dir,exist_ok=True)
+    NOCODE = False # 数据集不包含代码开关
+    exp_data_dir = "/data/mml/DL_bug_classification/exp_codeT5_time"
     main()
