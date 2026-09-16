@@ -4,6 +4,7 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 import os
+import json
 from gensim.models import Word2Vec
 import nltk
 from nltk.corpus import stopwords
@@ -17,6 +18,7 @@ from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.naive_bayes import MultinomialNB, GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
+import joblib
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report, log_loss
@@ -175,7 +177,7 @@ def train_pred(train_vector, val_vector, test_vector, y_train, y_val, y_test, te
             for n in knn_n_neighbors
         ],
     }
-
+    times_dict = {}
     result_dfs = {}
     for clf_name, candidates in clf_candidates.items():
         print(f'分类器名称:{clf_name}')
@@ -190,7 +192,7 @@ def train_pred(train_vector, val_vector, test_vector, y_train, y_val, y_test, te
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_clf = clf
-
+        s_time = time.time()
         y_pred = best_clf.predict(test_vector)
         probs = best_clf.predict_proba(test_vector)
         probs_by_label = np.zeros((len(y_test), 6))
@@ -205,8 +207,10 @@ def train_pred(train_vector, val_vector, test_vector, y_train, y_val, y_test, te
         for label_num in range(6):
             result_df[f'prob_{label_num}'] = probs_by_label[:, label_num]
         result_dfs[clf_name] = result_df
-
-    return result_dfs
+        e_time = time.time()
+        cost_time = e_time - s_time
+        times_dict[clf_name] = cost_time
+    return result_dfs,times_dict
 
 def baseline_method(split_seed, baseline_name, dataset_split_method, exp_id=None):
     '''
@@ -250,7 +254,7 @@ def baseline_method(split_seed, baseline_name, dataset_split_method, exp_id=None
     else:
         raise Exception("baseline name参数错误")
 
-    result_dfs = train_pred(
+    result_dfs,times_dict = train_pred(
         train_vector,
         val_vector,
         test_vector,
@@ -268,11 +272,12 @@ def baseline_method(split_seed, baseline_name, dataset_split_method, exp_id=None
         save_file_path = os.path.join(save_dir,save_file_name)
         df.to_csv(save_file_path,index=False)
     print(f"结果保存在:{save_dir}")
+    return times_dict
 
 
 def main():
     s_time=time.time()
-    method_name = "word2vec" # tfidf|word2vec
+    method_name = "tfidf" # tfidf|word2vec
     dataset_split_method = "random" # random|time|time_tvt(不用)
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
@@ -281,6 +286,9 @@ def main():
     print(f"实验设置:{experiment_setting}")
     repeat_num = len(experiment_configs) # 重复实验次数
     print(f"实验重复次数:{repeat_num}")
+    
+    repeat_times_dict ={}
+    count = 1
     for experiment_config in experiment_configs:
         exp_id = experiment_config["exp_id"]
         split_seed = experiment_config["split_seed"]
@@ -289,24 +297,29 @@ def main():
             f"数据集切分随机种子:{split_seed},"
             f"重复id:{repeat_id},实验id:{exp_id}"
         )
-        baseline_method(
+        times_dict = baseline_method(
             split_seed,
             method_name,
             dataset_split_method,
             exp_id=exp_id,
         )
+        repeat_times_dict[count] = times_dict
+        count += 1
     e_time=time.time()
     elapsed_time = int(e_time - s_time)
     hours, remainder = divmod(elapsed_time, 3600)
     minutes, seconds = divmod(remainder, 60)
     print(f"总耗时：{hours:02d}小时 {minutes:02d}分钟 {seconds:02d}秒")
     print(f"当前时间:{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    with open(f'{method_name}_time.json', 'w', encoding='utf-8') as f:
+        json.dump(repeat_times_dict, f, ensure_ascii=False, indent=2)
+    print(f"详细时间保存在:f'{method_name}_time.json'")
 
 
 if __name__ == "__main__":
     pid = os.getpid()
     print(f"pid:{pid}")
-    exp_data_dir = "/data/mml/DL_bug_classification/exp_nocode"
+    NOCODE = False
+    exp_data_dir = "/data/mml/DL_bug_classification/exp_tfidf"
     os.makedirs(exp_data_dir,exist_ok=True)
-    NOCODE = True
     main()

@@ -9,7 +9,7 @@ from scipy import stats
 from cliffs_delta import cliffs_delta
 
 BASELINE_CLFS = ("LR", "DT", "RF", "SVM", "KNN")
-BERT_METHODS = ("sobert", "robert", "codebert", "longformer", "codeT5")
+BERT_METHODS = ("sobert", "robert", "codebert", "codeT5") #  "longformer"
 BASELINE_METHODS = ("tfidf", "word2vec")
 LLM_METHODS = ("chatgpt", "claude")
 # LLM_METHODS = ("chatgpt",)
@@ -108,7 +108,7 @@ def build_result_df() -> pd.DataFrame:
             )
         ]
     ]
-    result_df.index.name = "row_name"
+    result_df.index.name = "Method"
     return result_df
 
 
@@ -194,9 +194,7 @@ def eval_wtl():
     '''
     sobert_metric_lists = get_method_metric_lists("sobert")["sobert"]
     baseline_metric_lists = {}
-    method_name_list = ("robert", "codebert", "codeT5","longformer", "tfidf", "word2vec", "chatgpt", "claude")
-    # method_name_list = ("robert", "codebert", "tfidf", "word2vec", "chatgpt")
-    # method_name_list = ("robert",)
+    method_name_list = ("robert", "codebert", "codeT5", "tfidf", "word2vec", "chatgpt", "claude")
     for method_name in method_name_list:
         baseline_metric_lists.update(get_method_metric_lists(method_name))
 
@@ -208,7 +206,7 @@ def eval_wtl():
             wtl_rows[baseline_name][metric_name] = wtl(sobert_values, baseline_values)
 
     wtl_df = pd.DataFrame.from_dict(wtl_rows, orient="index")
-    wtl_df.index.name = "row_name"
+    wtl_df.index.name = "Method"
     wtl_df.to_csv("result_wtl.csv", index=True)
     return sobert_metric_lists, baseline_metric_lists, wtl_df
 
@@ -219,6 +217,6 @@ def main():
 
 
 if __name__ == "__main__":
-    exp_root_dir = "/data/mml/DL_bug_classification/exp_random5-3_code"
-    # main()
-    eval_wtl()
+    exp_root_dir = "/data/mml/DL_bug_classification/exp_bak/exp_4_time90_5-3"
+    main()
+    # eval_wtl()

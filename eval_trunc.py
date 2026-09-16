@@ -281,9 +281,12 @@ def main_3():
     base_rate_res,base_count_res,base_longcount_res = misclassification_distribution(base_distribution_list)
     improve_rate_res,improve_count_res,improve_longcount_res = misclassification_distribution(improve_distribution_list)
 
+    print("="*50)
+    print("收集misclassified测试数据集类别分布情况:")
+    print("="*50)
     for class_i in [0,1,2,3,4,5,"all"]:
         print(f"class:{class_i}")
-        print("rate=====")
+        print("=====Rate=====")
         base_rate_list = base_rate_res[class_i]
         improve_rate_list = improve_rate_res[class_i]
         base_rate_mean = nanmean_or_nan(base_rate_list)
@@ -293,7 +296,7 @@ def main_3():
         # print(f"improve_rate_list:{improve_rate_list}")
         print(f"baserate:{base_rate_mean}|improverate:{improve_rate_mean}|wtl:{h}")
 
-        print("count=====")
+        print("=====Count=====")
         base_count_list = base_count_res[class_i]
         improve_count_list = improve_count_res[class_i]
         base_count_mean = nanmean_or_nan(base_count_list)

@@ -7,6 +7,7 @@ import torch
 from torch.optim import AdamW
 import pandas as pd
 import time
+import json
 import sys
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, classification_report, roc_auc_score
@@ -450,11 +451,15 @@ def eval_bert(model_name:str,device:str,dataset_split_method:str,experiment_sett
     experiment_setting:seed_15|seed_5_repeat_3
     '''
     assert model_name in ["sobert","codebert","robert", "codeT5", "longformer"], "model_name 传参错误"
-    save_dir = os.path.join(exp_data_dir,f"{model_name}_res")
+    '''
+    save_dir = os.path.join(exp_data_dir,f"{model_name}_res_tempTime")
     os.makedirs(save_dir,exist_ok=True)
+    '''
     # save_file_name = "res.joblib"
     # save_path = os.path.join(save_dir,save_file_name)
     # all_res = {}
+    repeat_times_dict ={}
+    count = 1
     experiment_configs = build_experiment_configs(experiment_setting)
     for experiment_config in experiment_configs:
         exp_id = experiment_config["exp_id"]
@@ -468,19 +473,30 @@ def eval_bert(model_name:str,device:str,dataset_split_method:str,experiment_sett
         )
         test_df = build_test_df(dataset_split_method, split_seed)
         trained_model_dir = os.path.join(exp_data_dir,"trained_models",model_name,f"ft_model_{exp_id}")
+        s_time = time.time()
         gt_labels, p_labels, probs = infer_trained_model(trained_model_dir,model_name, test_df, device=device)
+        e_time = time.time()
+        cost_time = e_time - s_time
+        repeat_times_dict[count] = cost_time
+        count += 1
+        with open(f'time/{model_name}_time_test.json', 'w', encoding='utf-8') as f:
+            json.dump(repeat_times_dict, f, ensure_ascii=False, indent=2)
+        print(f"详细时间保存在:time/{model_name}_time_test.json")
         predict_df = build_prediction_df(test_df, gt_labels, p_labels, probs)
         # res = build_report(gt_labels, p_labels)
         # all_res[rs] = res
-
+        '''
         predict_save_dir = os.path.join(save_dir, f"seed_{exp_id}")
         os.makedirs(predict_save_dir, exist_ok=True)
         predict_save_path = os.path.join(predict_save_dir, f"{model_name}.csv")
         predict_df.to_csv(predict_save_path, index=False)
         print(f"{model_name} seed {exp_id} 测试集推理结果保存在:{predict_save_path}")
+        '''
 
+    '''
     all_res_path = save_all_res_from_infer_csvs(save_dir, model_name, experiment_configs)
     print(f"{model_name} 15次推理指标CSV保存在:{all_res_path}")
+    '''
 
     # joblib.dump(all_res,save_path)
     # print(f"{model_name}实验指标保存在:{save_path}")
@@ -656,9 +672,9 @@ def eval_xwj_from_all_res():
 
 def main():
     # bert系列
-    device = "cuda:7"
+    device = "cuda:1"
     bertname = "codeT5" # sobert|codebert|robert|codeT5|longformer
-    dataset_split_method = "time" # random|time|time_tvt(不用了)
+    dataset_split_method = "random" # random|time|time_tvt(不用了)
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     eval_bert(bertname, device, dataset_split_method, experiment_setting)
     # eval_slidingwindow_bert(bertname, device, dataset_split_method, experiment_setting)
@@ -675,5 +691,5 @@ def main():
 
 if __name__ == "__main__":
     NOCODE = False # 数据集不包含代码开关
-    exp_data_dir = "/data/mml/DL_bug_classification/exp_codeT5_time"
+    exp_data_dir = "/data/mml/DL_bug_classification/exp_random5-3_code"
     main()

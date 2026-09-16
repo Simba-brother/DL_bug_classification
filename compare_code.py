@@ -19,7 +19,7 @@ BASELINE_CLFS = ("LR", "DT", "RF", "SVM", "KNN")
 SINGLE_MODEL_METHODS = ("sobert", "robert", "codebert")
 GROUPED_CLF_METHODS = ("tfidf", "word2vec")
 # METHODS_TO_COMPARE = ("sobert", "tfidf", "word2vec")
-METHODS_TO_COMPARE = ("robert",)
+METHODS_TO_COMPARE = ("sobert",)
 WTL_ALPHA = 0.05
 CLIFFS_DELTA_THRESHOLD = 0.147
 
@@ -189,8 +189,8 @@ def build_code_comparison_df(
 def compare_method_code_vs_nocode(method_name: str, method_config: dict) -> pd.DataFrame:
     res_dir = method_config["res_dir"]
     metric_groups = method_config["metric_groups"]
-    withcode_df = pd.read_csv(os.path.join(exp_root_dir, "exp", res_dir, "all_res.csv"))
-    nocode_df = pd.read_csv(os.path.join(exp_root_dir, "exp_nocode", res_dir, "all_res.csv"))
+    withcode_df = pd.read_csv(os.path.join(exp_root_dir, "exp_random5-3_code", res_dir, "all_res.csv"))
+    nocode_df = pd.read_csv(os.path.join(exp_root_dir, "exp_random5-3_nocode", res_dir, "all_res.csv"))
     comparison_df = build_code_comparison_df(
         method_name,
         withcode_df,
