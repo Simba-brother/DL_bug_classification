@@ -357,16 +357,16 @@ def train(model_path,save_dir,exp_id,split_seed,device,dataset_split_method,mode
     return best_info
 
 def main():
-    device = "cuda:4"
+    device = "cuda:5"
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     experiment_configs = build_experiment_configs(experiment_setting)
     repeat_num = len(experiment_configs) # 总重复实验次数
     print(f"实验重复次数:{repeat_num}")
     dataset_split_method = "random" # random|time|time_tvt(不用)
-    model_name = "sobert" # sobert|codebert|robert|longformer|codeT5
+    model_name = "longformer" # sobert|codebert|robert|longformer|codeT5
     model_path = None
     max_length = 512
-    batch_size = 40
+    batch_size = 32
     if model_name == "sobert":
         model_path= "./model"
     elif model_name == "codebert":
@@ -375,7 +375,7 @@ def main():
         model_path = "./roberta-base"
     elif model_name == "longformer":
         model_path = "./longformer"
-        max_length = 2048
+        max_length = 1024
         batch_size = 2
     elif model_name == "codeT5":
         model_path = "./codeT5"
@@ -405,11 +405,12 @@ def main():
             batch_size,
         )
 
+
 if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
     os.makedirs(exp_data_dir,exist_ok=True)
     NOCODE = False
-    exp_data_dir = os.path.join(exp_data_dir,"exp_sobert_bs40_headtail_random")
+    exp_data_dir = os.path.join(exp_data_dir,"exp_longformer1024_random")
     pid = os.getpid()
     print(f"PID:{pid}")
     main()
