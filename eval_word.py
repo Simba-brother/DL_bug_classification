@@ -323,4 +323,4 @@ if __name__ == "__main__":
     device = "cuda:4" # 推理设备
     exp_data_dir = "/data/mml/DL_bug_classification" # 项目实验根目录
     # eval_single_word()
-    # eval_combinword()
+    eval_combinword()
