@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 
 class TextDataset(Dataset):
-    def __init__(self, texts, labels, tokenizer:AutoTokenizer, max_length=512,truncation_mode="head_tail"):
+    def __init__(self, texts, labels, tokenizer:AutoTokenizer, max_length=512,truncation_mode="head"):
         self.texts = texts
         self.labels = labels
         self.tokenizer = tokenizer
@@ -363,10 +363,10 @@ def main():
     repeat_num = len(experiment_configs) # 总重复实验次数
     print(f"实验重复次数:{repeat_num}")
     dataset_split_method = "random" # random|time|time_tvt(不用)
-    model_name = "longformer" # sobert|codebert|robert|longformer|codeT5
+    model_name = "sobert" # sobert|codebert|robert|longformer|codeT5
     model_path = None
     max_length = 512
-    batch_size = 32
+    batch_size = 40
     if model_name == "sobert":
         model_path= "./model"
     elif model_name == "codebert":
@@ -409,7 +409,7 @@ if __name__ == "__main__":
     exp_data_dir = "/data/mml/DL_bug_classification"
     os.makedirs(exp_data_dir,exist_ok=True)
     NOCODE = False
-    exp_data_dir = os.path.join(exp_data_dir,"exp_longformer2048_random")
+    exp_data_dir = os.path.join(exp_data_dir,"exp_sobert_bs40_headtail_random")
     pid = os.getpid()
     print(f"PID:{pid}")
     main()
