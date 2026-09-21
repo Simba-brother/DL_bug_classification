@@ -131,7 +131,7 @@ def infer_trained_model(trained_model_dir:str, modelname:str, df:pd.DataFrame, d
 
     X_test, y_test = list(df["Text"]), list(df["LabelNum"])
     # print(f"测试集大小:{len(X_test)}")
-    truncation_mode = "head"
+    truncation_mode = "head_tail"
     print(f"token截断模式:{truncation_mode}")
     if modelname == "longformer":
         test_loader = DataLoader(BertTextDataset(X_test, y_test, tokenizer,max_length=4096, truncation_mode="head"), batch_size=2, shuffle=False)    
@@ -672,9 +672,9 @@ def eval_xwj_from_all_res():
 
 def main():
     # bert系列
-    device = "cuda:1"
-    bertname = "longformer" # sobert|codebert|robert|codeT5|longformer
-    dataset_split_method = "time" # random|time|time_tvt(不用了)
+    device = "cuda:0"
+    bertname = "sobert" # sobert|codebert|robert|codeT5|longformer
+    dataset_split_method = "random" # random|time|time_tvt(不用了)
     experiment_setting = "seed_5_repeat_3" # seed_15|seed_5_repeat_3
     eval_bert(bertname, device, dataset_split_method, experiment_setting)
     # eval_slidingwindow_bert(bertname, device, dataset_split_method, experiment_setting)
@@ -691,5 +691,5 @@ def main():
 
 if __name__ == "__main__":
     NOCODE = False # 数据集不包含代码开关
-    exp_data_dir = "/data/mml/DL_bug_classification/exp_bak/exp_4_time90_5-3"
+    exp_data_dir = "/data/mml/DL_bug_classification/exp_sobert_bs32_headtail_random"
     main()

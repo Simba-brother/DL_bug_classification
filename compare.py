@@ -9,7 +9,7 @@ from scipy import stats
 from cliffs_delta import cliffs_delta
 
 BASELINE_CLFS = ("LR", "DT", "RF", "SVM", "KNN")
-BERT_METHODS = ("sobert", "robert", "codebert", "codeT5") #  "longformer"
+BERT_METHODS = ("sobert", "robert", "codebert", "codeT5", "longformer") #  
 BASELINE_METHODS = ("tfidf", "word2vec")
 LLM_METHODS = ("chatgpt", "claude")
 # LLM_METHODS = ("chatgpt",)
@@ -194,7 +194,7 @@ def eval_wtl():
     '''
     sobert_metric_lists = get_method_metric_lists("sobert")["sobert"]
     baseline_metric_lists = {}
-    method_name_list = ("robert", "codebert", "codeT5", "tfidf", "word2vec", "chatgpt", "claude")
+    method_name_list = ("robert", "codebert", "codeT5","tfidf", "word2vec", "chatgpt", "claude") # longformer
     for method_name in method_name_list:
         baseline_metric_lists.update(get_method_metric_lists(method_name))
 
@@ -218,5 +218,5 @@ def main():
 
 if __name__ == "__main__":
     exp_root_dir = "/data/mml/DL_bug_classification/exp_bak/exp_4_time90_5-3"
-    main()
-    # eval_wtl()
+    # main()
+    eval_wtl()
