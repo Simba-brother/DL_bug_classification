@@ -1,3 +1,5 @@
+from typing import Any
+
 from transformers import AutoTokenizer, AutoModel, AutoModelForSequenceClassification
 from torch.utils.data import DataLoader, Dataset, random_split, Subset
 import torch
@@ -406,12 +408,267 @@ def main():
             batch_size,
         )
 
+def token_stats():
+    model_path = "./model" # Sobert model dir
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+    dataset_path = "dataset.csv"
+    # 数据集
+    X_train,y_train,X_val,y_val,X_test,y_test,num_labels = build_dataset(
+        dataset_split_method="random",
+        split_seed=42,
+    )
+    save_dir = os.path.join(exp_data_dir,"entity_dataset")
+    os.makedirs(save_dir, exist_ok=True)
+    df = pd.read_csv(dataset_path)
+    required_columns = {"Id", "Text", "Label", "LabelNum"}
+    # Label 映射关系
+    label_num2label_name = {
+        0: "model",
+        1: "tensor",
+        2: "training",
+        3: "gpu",
+        4: "api",
+        5: "Others",
+    }
+    label_name2display_name = {
+        "model": "Model",
+        "tensor": "Tensors&Inputs",
+        "training": "Training",
+        "gpu": "GPU Usage",
+        "api": "API",
+        "Others": "Others",
+    }
+    category_order = [
+        "Model",
+        "Tensors&Inputs",
+        "Training",
+        "GPU Usage",
+        "API",
+        "Others",
+        "ALL",
+    ]
+
+    token_records = []
+    for row in df.itertuples(index=False):
+        label_name = str(row.Label).strip() # dataset.csv中Label字段为字符串，需要去掉首尾空格
+        display_name = label_name2display_name[label_name]
+        token_count = len(
+            tokenizer.encode(
+                str(row.Text), # 这条post的文本内容
+                add_special_tokens=True,
+                truncation=False, # 统计token数量，不截断
+            )
+        )
+        token_records.append(
+            {
+                "Id": row.Id,
+                "Label": label_name,
+                "LabelNum": int(row.LabelNum),
+                "Category": display_name,
+                "Token Number": token_count,
+            }
+        )
+
+    detail_df = pd.DataFrame(token_records)
+    all_df = detail_df.copy()
+    all_df["Category"] = "ALL"
+    # 将分分类别数据和全量数据（标记为"ALL"）合并，ignore_index=True重置索引避免重复
+    plot_df = pd.concat([detail_df, all_df], ignore_index=True)
+    # 将Category列转换为有序分类变量，指定类别顺序为预定义的category_order，保证后续排序/分组时类别顺序固定
+    plot_df["Category"] = pd.Categorical(
+        plot_df["Category"],
+        categories=category_order,
+        ordered=True,
+    )
+    # 按照Category和Id列升序排序，重置索引并丢弃原来的索引列，整理数据顺序
+    plot_df = plot_df.sort_values(["Category", "Id"]).reset_index(drop=True)
+
+    summary_df = (
+        plot_df.groupby("Category", observed=False)["Token Number"]
+        .agg(
+            SampleSize="count",
+            Min="min",
+            Q1=lambda x: x.quantile(0.25),
+            Median="median",
+            Mean="mean",
+            Q3=lambda x: x.quantile(0.75),
+            Max="max",
+            Std="std",
+        )
+        .reset_index()
+    )
+    summary_df["Category"] = pd.Categorical(
+        summary_df["Category"],
+        categories=category_order,
+        ordered=True,
+    )
+    summary_df = summary_df.sort_values("Category").reset_index(drop=True)
+
+    plot_data_path = os.path.join(save_dir, "token_count_boxplot_data.csv")
+    summary_path = os.path.join(save_dir, "token_count_summary.csv")
+    plot_df.to_csv(plot_data_path, index=False)
+    summary_df.to_csv(summary_path, index=False)
+
+    print(f"token统计数据保存在:{plot_data_path}")
+    print(f"token汇总统计保存在:{summary_path}")
+    print(summary_df)
+
+
+def token_stats():
+    model_path = "./model" # Sobert model dir
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+    dataset_path = "dataset.csv"
+    save_dir = os.path.join(exp_data_dir,"test_dataset")
+    os.makedirs(save_dir, exist_ok=True)
+    df = pd.read_csv(dataset_path)
+    required_columns = {"Id", "Text", "Label", "LabelNum"}
+    label_num2label_name = {
+        0: "model",
+        1: "tensor",
+        2: "training",
+        3: "gpu",
+        4: "api",
+        5: "Others",
+    }
+    label_name2display_name = {
+        "model": "Model",
+        "tensor": "Tensors&Inputs",
+        "training": "Training",
+        "gpu": "GPU Usage",
+        "api": "API",
+        "Others": "Others",
+    }
+    category_order = [
+        "Model",
+        "Tensors&Inputs",
+        "Training",
+        "GPU Usage",
+        "API",
+        "Others",
+        "ALL",
+    ]
+    split_seeds = [42, 43, 44, 45, 46]
+    test_size = int(df.shape[0] * 0.15)
+    def build_test_df(one_seed:int) -> pd.DataFrame:
+        _, test_df = train_test_split(
+            df,
+            test_size=test_size,
+            stratify=df["LabelNum"],
+            random_state=one_seed,
+        )
+        return test_df.copy().reset_index(drop=True)
+
+    per_seed_detail_dfs = []
+    per_seed_summary_dfs = []
+
+    for split_seed in split_seeds:
+        test_df = build_test_df(split_seed)
+        token_records = []
+        for row in test_df.itertuples(index=False):
+            label_name = str(row.Label).strip()
+            display_name = label_name2display_name[label_name]
+            token_count = len(
+                tokenizer.encode(
+                    str(row.Text),
+                    add_special_tokens=True,
+                    truncation=False,
+                )
+            )
+            token_records.append(
+                {
+                    "Seed": split_seed,
+                    "Id": row.Id,
+                    "Label": label_name,
+                    "LabelNum": int(row.LabelNum),
+                    "Category": display_name,
+                    "Token Number": token_count,
+                }
+            )
+
+        detail_df = pd.DataFrame(token_records)
+        all_df = detail_df.copy()
+        all_df["Category"] = "ALL"
+        plot_df = pd.concat([detail_df, all_df], ignore_index=True)
+        plot_df["Category"] = pd.Categorical(
+            plot_df["Category"],
+            categories=category_order,
+            ordered=True,
+        )
+        plot_df = plot_df.sort_values(["Category", "Id"]).reset_index(drop=True)
+        per_seed_detail_dfs.append(plot_df)
+
+        summary_df = (
+            plot_df.groupby(["Seed", "Category"], observed=False)["Token Number"]
+            .agg(
+                SampleSize="count",
+                Min="min",
+                Q1=lambda x: x.quantile(0.25),
+                Median="median",
+                Mean="mean",
+                Q3=lambda x: x.quantile(0.75),
+                Max="max",
+                Std="std",
+            )
+            .reset_index()
+        )
+        summary_df["Category"] = pd.Categorical(
+            summary_df["Category"],
+            categories=category_order,
+            ordered=True,
+        )
+        summary_df = summary_df.sort_values(["Seed", "Category"]).reset_index(drop=True)
+        per_seed_summary_dfs.append(summary_df)
+
+    plot_df = pd.concat(per_seed_detail_dfs, ignore_index=True)
+    per_seed_summary_df = pd.concat(per_seed_summary_dfs, ignore_index=True)
+    avg_summary_df = (
+        per_seed_summary_df.groupby("Category", observed=False)[
+            ["SampleSize", "Min", "Q1", "Median", "Mean", "Q3", "Max", "Std"]
+        ]
+        .mean()
+        .reset_index()
+    )
+    plot_df["Category"] = pd.Categorical(
+        plot_df["Category"],
+        categories=category_order,
+        ordered=True,
+    )
+    per_seed_summary_df["Category"] = pd.Categorical(
+        per_seed_summary_df["Category"],
+        categories=category_order,
+        ordered=True,
+    )
+    avg_summary_df["Category"] = pd.Categorical(
+        avg_summary_df["Category"],
+        categories=category_order,
+        ordered=True,
+    )
+    plot_df = plot_df.sort_values(["Seed", "Category", "Id"]).reset_index(drop=True)
+    per_seed_summary_df = per_seed_summary_df.sort_values(["Seed", "Category"]).reset_index(drop=True)
+    avg_summary_df = avg_summary_df.sort_values("Category").reset_index(drop=True)
+
+    plot_data_path = os.path.join(save_dir, "test_token_count_boxplot_data_5seeds.csv")
+    per_seed_summary_path = os.path.join(save_dir, "test_token_count_summary_5seeds.csv")
+    avg_summary_path = os.path.join(save_dir, "test_token_count_summary_avg_5seeds.csv")
+    plot_df.to_csv(plot_data_path, index=False)
+    per_seed_summary_df.to_csv(per_seed_summary_path, index=False)
+    avg_summary_df.to_csv(avg_summary_path, index=False)
+
+    print(f"5个seed测试集token明细保存在:{plot_data_path}")
+    print(f"5个seed测试集逐seed汇总统计保存在:{per_seed_summary_path}")
+    print(f"5个seed平均后的箱线图统计保存在:{avg_summary_path}")
+    print(avg_summary_df)
+
+def plot_token_count_boxplot():
+    pass
+
 
 if __name__ == "__main__":
+    pid = os.getpid()
+    print(f"PID:{pid}")
     exp_data_dir = "/data/mml/DL_bug_classification"
     os.makedirs(exp_data_dir,exist_ok=True)
     NOCODE = False
-    exp_data_dir = os.path.join(exp_data_dir,"exp_sobert_bs32_headtail_random")
-    pid = os.getpid()
-    print(f"PID:{pid}")
-    main()
+    exp_data_dir = os.path.join(exp_data_dir,"token_stats")
+    # main()
+    token_stats()
