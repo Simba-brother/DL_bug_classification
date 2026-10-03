@@ -660,7 +660,170 @@ def token_stats():
     print(avg_summary_df)
 
 def plot_token_count_boxplot():
-    pass
+    """绘制完整数据集和 5 个 seed 平均测试集的两张箱线图。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import MaxNLocator
+
+    stats_dir = "/data/mml/DL_bug_classification/token_stats"
+    entity_dir = os.path.join(stats_dir, "entity_dataset")
+    entity_data_path = os.path.join(entity_dir, "token_count_boxplot_data.csv")
+    # 当前测试集 CSV 位于 token_stats/token_stats，也兼容预期的 test_dataset 目录。
+    test_data_candidates = [
+        os.path.join(stats_dir, "test_dataset", "test_token_count_boxplot_data_5seeds.csv"),
+        os.path.join(stats_dir, "token_stats", "test_token_count_boxplot_data_5seeds.csv"),
+    ]
+    test_data_path = next(
+        (path for path in test_data_candidates if os.path.isfile(path)), None
+    )
+    if test_data_path is None:
+        raise FileNotFoundError(
+            "找不到 5 个 seed 的测试集明细文件：" + ", ".join(test_data_candidates)
+        )
+
+    category_order = [
+        "Model", "Tensors&Inputs", "Training", "GPU Usage", "API", "Others", "ALL"
+    ]
+
+    def read_details(path, require_seed=False):
+        details = pd.read_csv(path)
+        required = {"Category", "Token Number"}
+        if require_seed:
+            required.add("Seed")
+        missing = required - set(details.columns)
+        if missing:
+            raise ValueError(f"{path} 缺少列 {sorted(missing)}")
+        return details
+
+    def box_stats(values, category):
+        values = np.sort(pd.to_numeric(values, errors="raise").to_numpy(dtype=float))
+        if not len(values):
+            raise ValueError(f"类别 {category} 没有 token 数数据")
+        q1, median, q3 = np.percentile(values, [25, 50, 75])
+        iqr = q3 - q1
+        # 与参考图一致：箱须到 1.5×IQR 范围内最远的实际观测值，离群点不画。
+        lower = values[values >= q1 - 1.5 * iqr][0]
+        upper = values[values <= q3 + 1.5 * iqr][-1]
+        return {
+            "label": category,
+            "whislo": lower,
+            "q1": q1,
+            "med": median,
+            "q3": q3,
+            "whishi": upper,
+            "fliers": [],
+        }
+
+    entity_details = read_details(entity_data_path)
+    test_details = read_details(test_data_path, require_seed=True)
+    seeds = sorted(test_details["Seed"].dropna().unique())
+    if len(seeds) != 5:
+        raise ValueError(f"测试集应包含 5 个 seed，实际找到 {len(seeds)} 个：{seeds}")
+
+    entity_stats = [
+        box_stats(
+            entity_details.loc[entity_details["Category"] == category, "Token Number"],
+            category,
+        )
+        for category in category_order
+    ]
+    test_stats = []
+    stat_keys = ("whislo", "q1", "med", "q3", "whishi")
+    for category in category_order:
+        per_seed_stats = [
+            box_stats(
+                test_details.loc[
+                    (test_details["Seed"] == seed)
+                    & (test_details["Category"] == category),
+                    "Token Number",
+                ],
+                category,
+            )
+            for seed in seeds
+        ]
+        # 分别计算每个 seed 的箱线图，再平均对应的箱体和箱须统计量。
+        test_stats.append({
+            "label": category,
+            **{key: np.mean([stat[key] for stat in per_seed_stats]) for key in stat_keys},
+            "fliers": [],
+        })
+
+    def draw_boxplot(ax, stats):
+        ax.set_facecolor("white")
+        positions = np.arange(1, len(category_order) + 1)
+        ax.bxp(
+            stats,
+            positions=positions,
+            widths=0.72,
+            patch_artist=True,
+            showfliers=False,
+            manage_ticks=False,
+            boxprops={"facecolor": "white", "edgecolor": "black", "linewidth": 1.15},
+            whiskerprops={"color": "black", "linewidth": 1.15},
+            capprops={"color": "black", "linewidth": 1.15},
+            medianprops={"color": "black", "linewidth": 1.8},
+        )
+        wrapped_labels = {
+            "Tensors&Inputs": "Tensors &\nInputs",
+            "GPU Usage": "GPU\nUsage",
+        }
+        tick_labels = [wrapped_labels.get(name, name) for name in category_order]
+        ax.set_xticks(positions, tick_labels)
+        ax.set_xlim(positions[0] - 0.55, positions[-1] + 0.55)
+        ax.set_xlabel("Category", fontsize=15, labelpad=8)
+        ax.set_ylabel("Token Number", fontsize=15, labelpad=8)
+        ax.tick_params(axis="x", labelsize=12, length=4, width=0.9, pad=6)
+        ax.tick_params(axis="y", labelsize=12, length=4, width=0.9)
+        max_whisker = max(stat["whishi"] for stat in stats)
+        y_top = max_whisker * 1.08
+        # 给最低的箱须留出间隔，同时保持四条边框相连。
+        ax.set_ylim(-max_whisker * 0.04, y_top)
+        ticks = MaxNLocator(nbins=6, integer=True).tick_values(0, y_top)
+        ax.set_yticks([tick for tick in ticks if 0 <= tick <= y_top])
+        ax.grid(axis="y", color="#E6E6E6", linewidth=0.6)
+        ax.set_axisbelow(True)
+        for position, stat in zip(positions, stats):
+            median_label = f"{stat['med']:.1f}"
+            ax.annotate(
+                median_label,
+                (position, stat["med"]),
+                xytext=(0, 3),
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.5},
+                zorder=4,
+            )
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_color("black")
+            spine.set_linewidth(0.8)
+
+    plots = (
+        (entity_stats, "entire_dataset_token_count_boxplot.pdf"),
+        (test_stats, "test_set_token_count_boxplot.pdf"),
+    )
+    # 使用紧凑版式；白底单色线条适合印刷和缩放。
+    with plt.rc_context({
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans"],
+        "axes.unicode_minus": False,
+        "pdf.fonttype": 42,
+    }):
+        for stats, filename in plots:
+            fig, ax = plt.subplots(figsize=(6.3, 4.6), facecolor="white")
+            draw_boxplot(ax, stats)
+            fig.subplots_adjust(left=0.15, right=0.98, top=0.97, bottom=0.23)
+            output_path = os.path.join(entity_dir, filename)
+            fig.savefig(
+                output_path, facecolor="white",
+                bbox_inches="tight", pad_inches=0.08,
+            )
+            plt.close(fig)
+            print(f"箱线图保存在: {output_path}")
 
 
 if __name__ == "__main__":
@@ -671,4 +834,4 @@ if __name__ == "__main__":
     NOCODE = False
     exp_data_dir = os.path.join(exp_data_dir,"token_stats")
     # main()
-    token_stats()
+    plot_token_count_boxplot()
